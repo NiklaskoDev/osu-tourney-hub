@@ -24,7 +24,7 @@
     {% if flashes %}
     <div class="stack flashes">
       {% for message in flashes %}
-        {% call alert("error" if message.kind == "error" else ("success" if message.kind == "success" else "info"), message.text) %}{% endcall %}
+        {% call alert(message.kind if message.kind in ["error", "success", "warning"] else "info", message.text) %}{% endcall %}
       {% endfor %}
     </div>
     {% endif %}

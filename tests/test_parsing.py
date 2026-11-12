@@ -4,7 +4,7 @@ import pytest
 
 from app.domain.parsing import MAX_DIGITS, parse_uint
 from app.repos import deleted_tournaments as deleted
-from app.services.links import map_id, match_id
+from app.services.links import map_id, match_id, source_link
 
 
 @pytest.mark.parametrize(
@@ -98,3 +98,25 @@ def test_the_list_cannot_grow_without_limit(db, monkeypatch):
 
     assert not deleted.is_deleted(db, 1, None)
     assert deleted.is_deleted(db, 5, None) and deleted.is_deleted(db, 3, None)
+
+
+# --- score and match links typed next to a score ---
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("https://osu.ppy.sh/scores/4242", "https://osu.ppy.sh/scores/4242"),
+        ("https://osu.ppy.sh/scores/osu/4242", "https://osu.ppy.sh/scores/4242"),
+        ("osu.ppy.sh/scores/fruits/99?x=1#frag", "https://osu.ppy.sh/scores/99"),
+        ("https://osu.ppy.sh/community/matches/777", "https://osu.ppy.sh/community/matches/777"),
+        ("https://osu.ppy.sh/mp/777", None),
+        ("  https://evil.example/scores/5?next=//x  ", "https://osu.ppy.sh/scores/5"),
+        ("https://osu.ppy.sh/beatmaps/129891", None),
+        ("12345", None),
+        ("", None),
+        ("https://osu.ppy.sh/scores/" + "9" * 40, None),
+    ],
+)
+def test_source_links_are_rebuilt_from_their_id(text, expected):
+    assert source_link(text) == expected

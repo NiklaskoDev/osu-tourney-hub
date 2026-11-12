@@ -36,6 +36,12 @@ def test_the_route_table_has_post_routes_to_check(app):
         "/t/1/members",
         "/t/1/members/1",
         "/t/1/members/1/remove",
+        "/t/1/scores",
+        "/t/1/scores/{score_id}/delete",
+        "/t/1/notes",
+        "/t/1/notes/{note_id}/delete",
+        "/t/1/lineup",
+        "/t/1/lineup/copy-suggestion",
     ):
         assert expected in paths
 

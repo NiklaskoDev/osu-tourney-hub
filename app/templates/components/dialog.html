@@ -2,10 +2,11 @@
     carrying data-dialog-open="<id>".
     Without `action` the buttons submit method="dialog", so closing needs no script.
     With `action` the confirm button posts to that URL (pass the CSRF token too) and Cancel just
-    closes the dialog. -#}
+    closes the dialog.
+    autoopen opens it when the page loads (a form that came back with an error). -#}
 {% from "components/csrf.html" import csrf_field %}
-{% macro dialog(id, title, confirm_label, danger=false, cancel_label="Cancel", action=none, csrf=none) -%}
-<dialog class="dialog" id="{{ id }}" aria-labelledby="{{ id }}-title">
+{% macro dialog(id, title, confirm_label, danger=false, cancel_label="Cancel", action=none, csrf=none, autoopen=false) -%}
+<dialog class="dialog" id="{{ id }}" aria-labelledby="{{ id }}-title"{% if autoopen %} data-autoopen{% endif %}>
   <form {% if action %}method="post" action="{{ action }}"{% else %}method="dialog"{% endif %} class="stack">
     {% if action %}{{ csrf_field(csrf) }}{% endif %}
     <h2 id="{{ id }}-title">{{ title }}</h2>

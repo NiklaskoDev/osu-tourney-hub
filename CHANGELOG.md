@@ -24,8 +24,13 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - Not in this version: importing matches and schedules from wybin. It arrives with the match schedule in a later phase (the tables for it do not exist yet).
 - An archived tournament is never rewritten by an import or sync, a deleted wybin tournament is not imported again automatically (an admin can still import it by hand), and a re-synced map pool keeps each map's row when wybin reorders it.
 - A failed or partial wybin job, including an unreadable map pool endpoint, shows on the Admin page with how many tournaments it affected.
+- Importing or syncing a tournament whose map pool cannot be read now shows a warning instead of plain success.
+- Mappool sheet per stage on the new Pool page: every member's best score and accuracy on each map, a team average per map, personal and team averages (overall and per mod bracket, with how many maps they cover), map stats, and all scores and notes per map. Players add their own scores (captains add them for anyone) and notes (for the team or only themselves). Only scores in the tournament's scoring type count; scores older than six months are marked old and still count. A score entered in one tournament shows in another with the same beatmap and mods, with a "from <tournament>" hint.
+- Lineup page: the players with the best scores per map for a stage (substitutes only when asked for, freemod rules respected, maps with too few scores flagged). Captains copy the suggestion as a draft, edit it and mark it final; everyone else reads it.
+- Download my data and Delete my data now include the scores and notes you added.
 
 ### Changed
+- Archiving a hidden tournament is refused until it is restored, mirroring hiding an archived one.
 - `/styleguide` is now for administrators only; the `STYLEGUIDE_PREVIEW` setting is removed.
 - `/healthz` opens the database read-only, so a missing database file is reported as unhealthy instead of being created.
 - README: port 8080 must only be reachable through the reverse proxy; corrected which settings are read yet.

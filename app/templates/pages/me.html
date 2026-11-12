@@ -42,7 +42,7 @@
 
   <section class="stack" aria-labelledby="data">
     <h2 id="data">Your data</h2>
-    <p>The hub stores your osu! profile, your timezone and your roster entries in tournaments. It does not store osu! tokens, emails or passwords.</p>
+    <p>The hub stores your osu! profile, your timezone, your roster entries in tournaments, and the scores and notes you add. It does not store osu! tokens, emails or passwords.</p>
     <div class="row">
       {{ button("Download my data", variant="secondary", href="/me/export", icon_name="download") }}
     </div>
@@ -51,7 +51,7 @@
       {{ button("Delete my data", variant="danger", icon_name="trash-2", data_dialog_open="delete-data") }}
     </div>
     {% call dialog("delete-data", "Delete all your data?", "Delete my data", danger=true, action="/me/delete", csrf=csrf_token) %}
-    <p>This deletes your profile, your roster entries in every tournament and your calendar feed tokens, and logs you out everywhere. Your public osu! data is not affected. It cannot be undone.</p>
+    <p>This deletes your profile, your roster entries in every tournament, the scores and notes you added by hand and your calendar feed tokens, and logs you out everywhere. Scores copied from osu! are public data and stay. Your public osu! data is not affected. It cannot be undone.</p>
     {% endcall %}
     {% else %}
     {% call alert("warning", "Log in again to delete your data") %}Deleting everything needs a login from the last five minutes. After you log in you return to this page.{% endcall %}

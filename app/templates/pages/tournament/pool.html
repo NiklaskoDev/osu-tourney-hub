@@ -1,0 +1,236 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/checkbox.html" import checkbox %}
+{% from "components/countdown.html" import local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/dialog.html" import dialog %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% from "components/tabs.html" import tabs %}
+{% block title %}Pool - {{ tournament.name }} - {% endblock %}
+
+{% macro map_name(pool_map) -%}
+{%- if pool_map.title -%}
+<span class="map-name" title="{{ pool_map.artist }} - {{ pool_map.title }} [{{ pool_map.version }}]">{{ pool_map.artist }} - {{ pool_map.title }}{% if pool_map.version %} [{{ pool_map.version }}]{% endif %}</span>
+{%- else -%}
+<span class="muted">Map not announced</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro score_cell(score, old, show_mods) -%}
+<span class="num">{{ score.score|fmt_score }}</span>
+<span class="cell-sub muted">{{ score.accuracy|fmt_acc }}{% if show_mods %} {{ score.mods|mods }}{% endif %}{% if old %} <span class="old-flag" title="Played more than 6 months ago">old</span>{% endif %}</span>
+{%- endmacro %}
+
+{% macro average_cell(average) -%}
+{%- if average.covered -%}
+<span class="num">{{ average.mean_score|fmt_score }}</span>
+<span class="cell-sub muted">{{ average.mean_accuracy|fmt_acc }} &middot; {{ average.covered }}/{{ average.total }} maps</span>
+{%- else -%}
+<span class="muted" aria-label="No scores">-</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% block tournament_content %}
+{% set vals = entry_values|default({}) %}
+{% set ef = entry_error_field|default(none) %}
+<div class="page__header">
+  <h1>Pool</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if stage_tabs %}{{ tabs("Stages", stage_tabs) }}{% endif %}
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}The sheet is read-only. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+{% if entry_error and not ef %}
+{% call alert("error", "That was not saved") %}{{ entry_error }}{% endcall %}
+{% endif %}
+
+{% if not stage %}
+{{ empty_state("This tournament has no stages yet." ~ (" They appear here after the next wybin sync." if tournament.source == "wybin" else "")) }}
+{% elif not view.rows %}
+{% if tournament.source == "wybin" %}
+{{ empty_state("The pool for this stage is not published on wybin yet. It will appear here automatically.") }}
+{% else %}
+{{ empty_state("This stage has no maps yet. An administrator adds them on the admin page.") }}
+{% endif %}
+{% else %}
+<p class="muted">Scores count in {{ scoring_label }}, with accuracy beside each one. {{ old_scores_hint }}</p>
+
+{% if not view.columns %}
+{{ empty_state("This tournament has no players on its roster yet. Add them on the Members page.") }}
+{% else %}
+<div class="sheet">
+{% call table("Mappool sheet: best score of each player on each map") %}
+<thead>
+  <tr>
+    <th scope="col">Map</th>
+    <th scope="col" class="is-numeric">SR</th>
+    <th scope="col" class="is-numeric">BPM</th>
+    <th scope="col" class="is-numeric">Length</th>
+    <th scope="col" class="is-numeric">CS</th>
+    <th scope="col" class="is-numeric">AR</th>
+    <th scope="col" class="is-numeric">OD</th>
+    <th scope="col" class="is-numeric">HP</th>
+    {% for member in view.columns %}
+    <th scope="col" class="is-numeric">{{ member.username or ("osu! user " ~ member.osu_id) }}{% if member.is_substitute %} <span class="muted">(sub)</span>{% endif %}</th>
+    {% endfor %}
+    <th scope="col" class="is-numeric">Team average</th>
+  </tr>
+</thead>
+<tbody>
+  {% for row in view.rows %}
+  {% set m = row.pool_map %}
+  <tr>
+    <th scope="row">{{ badge(m.slot) }} {{ map_name(m) }}</th>
+    <td class="is-numeric">{% if m.star_rating is not none %}{{ "%.2f"|format(m.star_rating) }}{% else %}-{% endif %}</td>
+    <td class="is-numeric">{% if m.bpm is not none %}{{ "%g"|format(m.bpm) }}{% else %}-{% endif %}</td>
+    <td class="is-numeric">{{ m.length_s|fmt_length }}</td>
+    <td class="is-numeric">{{ "%g"|format(m.cs) if m.cs is not none else "-" }}</td>
+    <td class="is-numeric">{{ "%g"|format(m.ar) if m.ar is not none else "-" }}</td>
+    <td class="is-numeric">{{ "%g"|format(m.od) if m.od is not none else "-" }}</td>
+    <td class="is-numeric">{{ "%g"|format(m.hp) if m.hp is not none else "-" }}</td>
+    {% for cell in row.cells %}
+    <td class="is-numeric">{% if cell.score %}{{ score_cell(cell.score, cell.old, m.is_freemod or m.is_tiebreaker) }}{% else %}<span class="muted" aria-label="No score">-</span>{% endif %}</td>
+    {% endfor %}
+    <td class="is-numeric">{% if row.team_count %}<span class="num">{{ row.team_score|fmt_score }}</span> <span class="cell-sub muted">{{ row.team_accuracy|fmt_acc }} &middot; {{ row.team_count }} {{ "player" if row.team_count == 1 else "players" }}</span>{% else %}<span class="muted" aria-label="No scores">-</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</tbody>
+<tfoot>
+  {% for average in view.averages %}
+  <tr>
+    <th scope="row">Average: {{ average.label }}</th>
+    <td colspan="7"></td>
+    {% for cell in average.cells %}
+    <td class="is-numeric">{{ average_cell(cell) }}</td>
+    {% endfor %}
+    <td class="is-numeric">{{ average_cell(average.team) }}</td>
+  </tr>
+  {% endfor %}
+</tfoot>
+{% endcall %}
+</div>
+{% endif %}
+
+<section class="stack" aria-labelledby="details-heading">
+  <h2 id="details-heading">Scores and notes per map</h2>
+  {% for detail in view.details %}
+  {% set m = detail.pool_map %}
+  {% set has_entry_error = entry_error and ef and entry_map_id|default("") == m.id|string %}
+  <details class="map-detail"{% if has_entry_error %} open{% endif %}>
+    <summary><span class="map-detail__title">{{ badge(m.slot) }} {{ map_name(m) }}</span> <span class="muted">{{ detail.scores|length }} {{ "score" if detail.scores|length == 1 else "scores" }}, {{ detail.notes|length }} {{ "note" if detail.notes|length == 1 else "notes" }}</span></summary>
+    <div class="stack map-detail__body">
+      {% if detail.scores %}
+      {% call table("All scores on " ~ m.slot) %}
+      <thead>
+        <tr>
+          <th scope="col">Player</th>
+          <th scope="col" class="is-numeric">Score</th>
+          <th scope="col" class="is-numeric">Accuracy</th>
+          <th scope="col">Mods</th>
+          <th scope="col">Played</th>
+          <th scope="col">Source</th>
+          <th scope="col">Status</th>
+          <th scope="col"><span class="visually-hidden">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in detail.scores %}
+        <tr>
+          <th scope="row">{{ line.player }}</th>
+          <td class="is-numeric">{{ line.score.score|fmt_score }}</td>
+          <td class="is-numeric">{{ line.score.accuracy|fmt_acc }}</td>
+          <td>{{ line.score.mods|mods }}</td>
+          <td>{{ local_time(line.score.played_at) }}{% if line.old %} <span class="old-flag" title="Played more than 6 months ago">old</span>{% endif %}</td>
+          <td>{% if line.link %}<a href="{{ line.link }}" rel="noopener noreferrer">{{ line.source }}</a>{% else %}{{ line.source }}{% endif %}{% if line.hint %} <span class="muted">({{ line.hint }})</span>{% endif %}</td>
+          <td>{{ line.status }}</td>
+          <td>
+            {% if line.can_delete %}
+            {{ button("Remove", variant="text", disabled=archived, data_dialog_open="remove-score-" ~ line.score.id) }}
+            {% call dialog("remove-score-" ~ line.score.id, "Remove this score?", "Remove score", danger=true, action="/t/" ~ tournament.id ~ "/scores/" ~ line.score.id ~ "/delete", csrf=csrf_token) %}
+            <input type="hidden" name="stage" value="{{ stage.id }}">
+            <p>{{ line.player }}: {{ line.score.score|fmt_score }} on {{ m.slot }}. This removes it from every tournament that shows it.</p>
+            {% endcall %}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% endcall %}
+      {% else %}
+      <p class="muted">No scores on this map yet.</p>
+      {% endif %}
+
+      {% if can_write and m.beatmap_id %}
+      <div>{{ button("Add score", variant="secondary", icon_name="plus", disabled=archived, data_dialog_open="score-dialog-" ~ m.id) }}</div>
+      {% call dialog("score-dialog-" ~ m.id, "Add score on " ~ m.slot, "Save score", action="/t/" ~ tournament.id ~ "/scores", csrf=csrf_token, autoopen=(has_entry_error and entry_kind == "score")) %}
+      {% set sv = vals if has_entry_error and entry_kind == "score" else {} %}
+      {% set sf = ef if has_entry_error and entry_kind == "score" else none %}
+      <input type="hidden" name="pool_map_id" value="{{ m.id }}">
+      {% if can_manage %}
+      {{ field("osu_id", "Player", options=player_options, value=sv.osu_id|default(user.osu_id|string), required=true, id="score-player-" ~ m.id, error=entry_error if sf == "osu_id" else none) }}
+      {% endif %}
+      {{ field("score", "Score", value=sv.score|default(""), required=true, id="score-score-" ~ m.id, inputmode="numeric", autocomplete="off", error=entry_error if sf == "score" else none, hint="Whole number, saved as " ~ scoring_label ~ ".") }}
+      {{ field("accuracy", "Accuracy (%)", value=sv.accuracy|default(""), required=true, id="score-acc-" ~ m.id, inputmode="decimal", autocomplete="off", error=entry_error if sf == "accuracy" else none, hint="From 0 to 100, for example 97.85.") }}
+      {% if m.is_freemod or m.is_tiebreaker %}
+      <fieldset class="field{% if sf == 'mods' %} field--invalid{% endif %}">
+        <legend class="field__label">Mods <span class="muted">(optional)</span></legend>
+        <div class="row">
+          {% for mod in mod_choices %}
+          {{ checkbox("mods", mod, value=mod, checked=(mod in sv.mods|default([])), id="score-mod-" ~ m.id ~ "-" ~ mod) }}
+          {% endfor %}
+        </div>
+        {% if sf == "mods" %}<span class="field__error">{{ entry_error }}</span>{% endif %}
+      </fieldset>
+      {% endif %}
+      {{ field("misses", "Misses", value=sv.misses|default(""), id="score-miss-" ~ m.id, inputmode="numeric", autocomplete="off", error=entry_error if sf == "misses" else none) }}
+      {{ field("max_combo", "Max combo", value=sv.max_combo|default(""), id="score-combo-" ~ m.id, inputmode="numeric", autocomplete="off", error=entry_error if sf == "max_combo" else none) }}
+      {{ field("link", "Score or match link", value=sv.link|default(""), id="score-link-" ~ m.id, autocomplete="off", error=entry_error if sf == "link" else none, hint="An osu! score or multiplayer match link.") }}
+      {% endcall %}
+      {% endif %}
+
+      <div class="stack">
+        <h3>Notes</h3>
+        {% if detail.notes %}
+        <ul class="notes">
+          {% for line in detail.notes %}
+          <li class="notes__item">
+            <p>{{ line.note.body }}</p>
+            <p class="muted">{{ line.author }} &middot; {{ "Only you" if line.note.visibility == "private" else "Team" }} &middot; {{ local_time(line.note.updated_at) }}</p>
+            {% if line.mine %}
+            {{ button("Remove", variant="text", disabled=archived, data_dialog_open="remove-note-" ~ line.note.id) }}
+            {% call dialog("remove-note-" ~ line.note.id, "Remove this note?", "Remove note", danger=true, action="/t/" ~ tournament.id ~ "/notes/" ~ line.note.id ~ "/delete", csrf=csrf_token) %}
+            <input type="hidden" name="stage" value="{{ stage.id }}">
+            <p>The note is removed for everyone who can read it.</p>
+            {% endcall %}
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No notes on this map yet.</p>
+        {% endif %}
+        {% if can_write %}
+        {% set nv = vals if has_entry_error and entry_kind == "note" else {} %}
+        {% set nf = ef if has_entry_error and entry_kind == "note" else none %}
+        <form class="stack" method="post" action="/t/{{ tournament.id }}/notes">
+          {{ csrf_field(csrf_token) }}
+          <input type="hidden" name="pool_map_id" value="{{ m.id }}">
+          {{ field("body", "Add a note", kind="textarea", value=nv.body|default(""), required=true, disabled=archived, id="note-body-" ~ m.id, maxlength="2000", error=entry_error if nf == "body" else none) }}
+          {{ field("visibility", "Who can read it", options=[("team", "The whole team"), ("private", "Only me")], value=nv.visibility|default("team"), required=true, disabled=archived, id="note-vis-" ~ m.id, error=entry_error if nf == "visibility" else none) }}
+          <div>{{ button("Add note", variant="secondary", type="submit", disabled=archived) }}</div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </details>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}

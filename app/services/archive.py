@@ -38,6 +38,8 @@ def archive(
         tournament = _require(conn, tournament_id)
         if tournament.status == "archived":
             raise ArchiveError("This tournament is already archived.", 409)
+        if tournament.status == "hidden":
+            raise ArchiveError("This tournament is hidden. Restore it before archiving it.", 409)
         tournaments_repo.set_status(conn, tournament_id, "archived", to_utc_iso(now))
         if cleaned is not None:
             tournaments_repo.set_final_placing(conn, tournament_id, cleaned)

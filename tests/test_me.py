@@ -4,7 +4,16 @@ from datetime import timedelta
 import pytest
 
 from app.domain.timezones import is_valid_timezone, timezone_names
-from tests.support import ADMIN_ID, add_member, add_tournament, add_user, osu_login
+from tests.support import (
+    ADMIN_ID,
+    add_member,
+    add_pool_map,
+    add_score,
+    add_stage,
+    add_tournament,
+    add_user,
+    osu_login,
+)
 
 
 def row(db, sql, *args):
@@ -340,3 +349,75 @@ def test_admins_can_delete_their_own_data_too(client, login, csrf, db):
     client.post("/me/delete", data=csrf())
 
     assert row(db, "SELECT COUNT(*) FROM users WHERE osu_id = ?", ADMIN_ID) == (0,)
+
+
+# --- scores, notes and lineups belong to the user's data ---
+
+
+def seed_sheet_data(db):
+    """Player 2001 has hand-entered, imported and captured scores, a private and a team note and
+    saved a lineup; player 2002 has scores and a note of their own."""
+    tournament_id = add_tournament(db)
+    add_member(db, tournament_id, 2001, "captain")
+    add_member(db, tournament_id, 2002, "player")
+    stage = add_stage(db, tournament_id)
+    pool_map = add_pool_map(db, stage, "NM1")
+    add_score(db, 1001, 2001, 800_000, source="manual", entered_by=2001)
+    add_score(db, 1001, 2001, 810_000, source="import", entered_by=2001)
+    add_score(db, 1001, 2001, 820_000, source="api", source_ref="api-1")
+    add_score(db, 1001, 2001, 830_000, source="mp", source_ref="mp-1", entered_by=2001)
+    add_score(db, 1001, 2002, 700_000, source="manual", entered_by=2001)
+    add_score(db, 1001, 2002, 710_000, source="manual", entered_by=2002)
+    for author, visibility, body in (
+        (2001, "private", "my private note"),
+        (2001, "team", "my team note"),
+        (2002, "team", "their note"),
+    ):
+        db.execute(
+            "INSERT INTO notes (tournament_id, pool_map_id, author_osu_id, visibility, body, "
+            "updated_at) VALUES (?, ?, ?, ?, ?, '2026-11-01T00:00:00Z')",
+            (tournament_id, pool_map, author, visibility, body),
+        )
+    db.execute(
+        "INSERT INTO lineups (tournament_id, stage_id, status, updated_by, updated_at) "
+        "VALUES (?, ?, 'draft', 2001, '2026-11-01T00:00:00Z')",
+        (tournament_id, stage),
+    )
+
+
+def test_the_export_contains_the_users_own_scores_and_notes_only(client, login, db):
+    seed_sheet_data(db)
+    login(2001, "SampleUser")
+
+    data = client.get("/me/export").json()
+
+    assert sorted(item["score"] for item in data["scores"]) == [
+        800_000,
+        810_000,
+        820_000,
+        830_000,
+    ]
+    assert sorted(note["body"] for note in data["notes"]) == ["my private note", "my team note"]
+    text = json.dumps(data)
+    assert "their note" not in text and "700000" not in text and "710000" not in text
+    assert "source_ref" not in text and "entered_by" not in text
+
+
+def test_deletion_removes_hand_entered_scores_and_notes_but_keeps_captured_scores_anonymised(
+    client, osu, csrf, db
+):
+    osu.add_user(2001, "SampleUser")
+    seed_sheet_data(db)
+    osu_login(client, 2001)
+
+    client.post("/me/delete", data=csrf())
+
+    kept = db.execute("SELECT osu_id, source, score, entered_by FROM scores ORDER BY id").fetchall()
+    assert [tuple(r) for r in kept] == [
+        (2001, "api", 820_000, None),
+        (2001, "mp", 830_000, None),  # public data stays, without who typed it
+        (2002, "manual", 700_000, None),  # typed in by the deleted user for someone else
+        (2002, "manual", 710_000, 2002),
+    ]
+    assert row(db, "SELECT body FROM notes") == ("their note",)
+    assert row(db, "SELECT updated_by FROM lineups") == (None,)

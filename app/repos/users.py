@@ -73,17 +73,31 @@ def export_data(conn: sqlite3.Connection, osu_id: int) -> dict[str, Any]:
     feed_tokens = conn.execute(
         "SELECT created_at FROM feed_tokens WHERE osu_id = ? ORDER BY created_at", (osu_id,)
     ).fetchall()
+    scores = conn.execute(
+        "SELECT beatmap_id, gamemode, mods, score, scoring, accuracy, max_combo, misses, passed, "
+        "achieved_at, source, source_url, created_at FROM scores WHERE osu_id = ? ORDER BY id",
+        (osu_id,),
+    ).fetchall()
+    notes = conn.execute(
+        "SELECT tournament_id, pool_map_id, visibility, body, updated_at FROM notes "
+        "WHERE author_osu_id = ? ORDER BY id",
+        (osu_id,),
+    ).fetchall()
     return {
         "profile": dict(profile) if profile else None,
         "tournament_memberships": [
             {**dict(row), "is_substitute": bool(row["is_substitute"])} for row in memberships
         ],
         "calendar_feed_tokens": [dict(row) for row in feed_tokens],
+        "scores": [{**dict(row), "passed": bool(row["passed"])} for row in scores],
+        "notes": [dict(row) for row in notes],
     }
 
 
 def delete(conn: sqlite3.Connection, osu_id: int) -> None:
     """Remove the user and everything keyed to them. Tournaments they owned stay, ownerless.
+    Hand-entered scores and notes of theirs go; scores they typed in for someone else stay but
+    forget who typed them.
 
     The next session_version for new accounts is raised past this one first (see
     VERSION_FLOOR_KEY), so old cookies stay dead after a re-login."""
@@ -96,6 +110,13 @@ def delete(conn: sqlite3.Connection, osu_id: int) -> None:
             (VERSION_FLOOR_KEY, osu_id),
         )
         conn.execute("DELETE FROM tournament_members WHERE osu_id = ?", (osu_id,))
+        conn.execute("DELETE FROM notes WHERE author_osu_id = ?", (osu_id,))
+        # Scores taken from osu! are public and stay, without the link to who entered them.
+        conn.execute(
+            "DELETE FROM scores WHERE osu_id = ? AND source IN ('manual', 'import')", (osu_id,)
+        )
+        conn.execute("UPDATE scores SET entered_by = NULL WHERE entered_by = ?", (osu_id,))
+        conn.execute("UPDATE lineups SET updated_by = NULL WHERE updated_by = ?", (osu_id,))
         conn.execute("UPDATE tournament_members SET added_by = NULL WHERE added_by = ?", (osu_id,))
         conn.execute("DELETE FROM users WHERE osu_id = ?", (osu_id,))  # cascades feed_tokens
 

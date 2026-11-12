@@ -15,6 +15,7 @@ from app.domain.modes import (
     mode_name,
     mods_from_bitmask,
     required_mods_for_prefix,
+    selectable_mods,
     slot_prefix,
     split_mods,
 )
@@ -194,3 +195,19 @@ def test_mode_helpers():
     assert is_valid_mode(3)
     assert not is_valid_mode(4)
     assert not is_valid_mode(-1)
+
+
+# --- mods offered for freemod scores ---
+
+
+def test_selectable_mods_follow_the_mode_tables():
+    assert "HR" in selectable_mods(STANDARD) and "HR" in selectable_mods(CATCH)
+    assert "HR" not in selectable_mods(MANIA) and "MR" in selectable_mods(MANIA)
+    assert "MR" not in selectable_mods(STANDARD)
+
+
+@pytest.mark.parametrize("mode", [STANDARD, TAIKO, CATCH, MANIA])
+def test_every_selectable_mod_is_valid_in_its_mode_and_never_a_no_fail_or_relax_mod(mode):
+    for mod in selectable_mods(mode):
+        assert canonical_mods([mod], mode)
+    assert not {"NF", "RX", "AP", "V2"} & set(selectable_mods(mode))

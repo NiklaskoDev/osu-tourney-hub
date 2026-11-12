@@ -3,6 +3,8 @@
     open section. Later phases add their entries to `items`. -#}
 {% set items = [
   ("overview", "Overview", "/t/" ~ tournament.id),
+  ("pool", "Pool", "/t/" ~ tournament.id ~ "/pool"),
+  ("lineup", "Lineup", "/t/" ~ tournament.id ~ "/lineup"),
   ("members", "Members", "/t/" ~ tournament.id ~ "/members"),
 ] %}
 {% if access.can_manage %}{% set items = items + [("settings", "Settings", "/t/" ~ tournament.id ~ "/settings")] %}{% endif %}

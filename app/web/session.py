@@ -18,7 +18,7 @@ FLASH_KEY = "flash"
 MAX_AGE_SECONDS = 14 * 24 * 3600
 MAX_FLASHES = 3
 REAUTH_WINDOW_SECONDS = 5 * 60
-FlashKind = Literal["success", "error", "info"]
+FlashKind = Literal["success", "warning", "error", "info"]
 
 
 def establish_session(request: Request, user: User, now: datetime) -> None:

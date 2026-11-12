@@ -36,6 +36,9 @@ WYBIN_DOWN = "wybin did not respond. Nothing was changed; try again later."
 WYBIN_UNREADABLE = "wybin sent data this app cannot read. Nothing was changed."
 MAX_WYBIN_USER_ID = 2**31
 NOT_FROM_WYBIN_MESSAGE = "This tournament did not come from wybin."
+POOLS_UNREADABLE_WARNING = (
+    "Teams and stages were updated; the map pool could not be read. Try syncing again later."
+)
 ARCHIVED_SYNC_MESSAGE = "This tournament is archived. Restore it before syncing."
 STATUS_LABELS = {"active": "Active", "archived": "Archived", "hidden": "Hidden"}
 
@@ -167,8 +170,11 @@ async def import_from_wybin(
         error, status = _wybin_failure(failure)
     else:
         tournament = _tournament(db, result.tournament_id)
-        verb = "imported" if result.created else "was already imported and is up to date"
-        flash(request, "success", f"{tournament.name} {verb}.")
+        if result.pools_unreadable:
+            flash(request, "warning", POOLS_UNREADABLE_WARNING)
+        else:
+            verb = "imported" if result.created else "was already imported and is up to date"
+            flash(request, "success", f"{tournament.name} {verb}.")
         return RedirectResponse(f"/t/{result.tournament_id}", status_code=303)
     return _page(request, user, db, status, import_error=error, import_entered=link.strip())
 
@@ -275,11 +281,14 @@ async def sync_now(
     if tournament.status == "archived":
         return _page(request, user, db, 409, action_error=ARCHIVED_SYNC_MESSAGE)
     try:
-        await sync_tournament(db, wybin, tid, clock)
+        result = await sync_tournament(db, wybin, tid, clock)
     except WybinError as failure:
         message, status = _wybin_failure(failure)
         return _page(request, user, db, status, action_error=message)
-    flash(request, "success", f"{_tournament(db, tid).name} is up to date with wybin.")
+    if result.pools_unreadable:
+        flash(request, "warning", POOLS_UNREADABLE_WARNING)
+    else:
+        flash(request, "success", f"{_tournament(db, tid).name} is up to date with wybin.")
     return RedirectResponse("/admin", status_code=303)
 
 

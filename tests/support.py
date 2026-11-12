@@ -259,3 +259,92 @@ def add_member(
         "VALUES (?, ?, ?, ?, ?, 'manual')",
         (tournament_id, osu_id, role, int(is_substitute), temp_captain_until),
     )
+
+
+def add_stage(
+    db: sqlite3.Connection,
+    tournament_id: int,
+    name: str = "Qualifiers",
+    sort_order: int = 1,
+    released: bool = True,
+    lineup_size: int | None = None,
+) -> int:
+    cursor = db.execute(
+        "INSERT INTO stages (tournament_id, name, sort_order, is_qualifier, lineup_size, "
+        "pool_released) VALUES (?, ?, ?, 0, ?, ?)",
+        (tournament_id, name, sort_order, lineup_size, int(released)),
+    )
+    return int(cursor.lastrowid)
+
+
+def add_pool_map(
+    db: sqlite3.Connection,
+    stage_id: int,
+    slot: str,
+    beatmap_id: int | None = None,
+    required_mods: str = "",
+    freemod: bool = False,
+    tiebreaker: bool = False,
+    bracket: str | None = None,
+) -> int:
+    """A pool map whose beatmap id defaults to 1000 + its sort position; title "Song <slot>"."""
+    position = db.execute(
+        "SELECT COUNT(*) FROM pool_maps WHERE stage_id = ?", (stage_id,)
+    ).fetchone()[0]
+    cursor = db.execute(
+        "INSERT INTO pool_maps (stage_id, slot, bracket, required_mods, is_freemod, "
+        "is_tiebreaker, sort_order, beatmap_id, artist, title, version, star_rating, bpm, "
+        "length_s, cs, ar, od, hp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Synth Artist', ?, 'Insane', "
+        "6.25, 180, 200, 4, 9, 8.5, 5)",
+        (
+            stage_id,
+            slot,
+            bracket or slot.rstrip("0123456789"),
+            required_mods,
+            int(freemod),
+            int(tiebreaker),
+            position + 1,
+            beatmap_id if beatmap_id is not None else 1000 + position + 1,
+            f"Song {slot}",
+        ),
+    )
+    return int(cursor.lastrowid)
+
+
+def add_score(
+    db: sqlite3.Connection,
+    beatmap_id: int,
+    osu_id: int,
+    score: int,
+    accuracy: float = 97.0,
+    mods: str = "",
+    scoring: str = "v2",
+    achieved_at: str | None = "2026-11-01T12:00:00Z",
+    source: str = "manual",
+    tournament_id: int | None = None,
+    entered_by: int | None = None,
+    gamemode: int = 0,
+    passed: bool = True,
+    source_ref: str | None = None,
+) -> int:
+    cursor = db.execute(
+        "INSERT INTO scores (beatmap_id, osu_id, gamemode, mods, score, scoring, accuracy, passed, "
+        "achieved_at, source, source_ref, entered_by, tournament_id, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '2026-11-01T12:00:00Z')",
+        (
+            beatmap_id,
+            osu_id,
+            gamemode,
+            mods,
+            score,
+            scoring,
+            accuracy,
+            int(passed),
+            achieved_at,
+            source,
+            source_ref or f"ref-{beatmap_id}-{osu_id}-{score}-{mods}-{scoring}",
+            entered_by,
+            tournament_id,
+        ),
+    )
+    return int(cursor.lastrowid)

@@ -21,6 +21,29 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 templates.env.globals["app_version"] = __version__
 templates.env.filters["mods"] = display_mods
 
+SECONDS_PER_MINUTE = 60
+
+
+def fmt_score(value: float | None) -> str:
+    """A score with thousands separators, rounded to a whole number."""
+    return "-" if value is None else f"{round(value):,}"
+
+
+def fmt_acc(value: float | None) -> str:
+    return "-" if value is None else f"{value:.2f}%"
+
+
+def fmt_length(seconds: int | None) -> str:
+    """Map length as m:ss."""
+    if seconds is None:
+        return "-"
+    return f"{seconds // SECONDS_PER_MINUTE}:{seconds % SECONDS_PER_MINUTE:02d}"
+
+
+templates.env.filters["fmt_score"] = fmt_score
+templates.env.filters["fmt_acc"] = fmt_acc
+templates.env.filters["fmt_length"] = fmt_length
+
 
 def render(
     request: Request,

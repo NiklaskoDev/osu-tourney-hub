@@ -1,0 +1,190 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/checkbox.html" import checkbox %}
+{% from "components/countdown.html" import local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/dialog.html" import dialog %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% from "components/tabs.html" import tabs %}
+{% block title %}Lineup - {{ tournament.name }} - {% endblock %}
+
+{% macro map_name(pool_map) -%}
+{%- if pool_map.title -%}
+<span class="map-name" title="{{ pool_map.artist }} - {{ pool_map.title }} [{{ pool_map.version }}]">{{ pool_map.artist }} - {{ pool_map.title }}{% if pool_map.version %} [{{ pool_map.version }}]{% endif %}</span>
+{%- else -%}
+<span class="muted">Map not announced</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro show_mods(pool_map, mods) -%}
+{%- if pool_map.is_freemod or pool_map.is_tiebreaker %} <span class="muted">({{ mods|mods }})</span>{% endif -%}
+{%- endmacro %}
+
+{% block tournament_content %}
+{% set ff = form_error_field|default(none) %}
+<div class="page__header">
+  <h1>Lineup</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if stage_tabs %}{{ tabs("Stages", stage_tabs) }}{% endif %}
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}The lineup is read-only. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+{% if form_error and not ff %}
+{% call alert("error", "Lineup not saved") %}{{ form_error }}{% endcall %}
+{% endif %}
+
+{% if not stage %}
+{{ empty_state("This tournament has no stages yet." ~ (" They appear here after the next wybin sync." if tournament.source == "wybin" else "")) }}
+{% elif not pool %}
+{% if tournament.source == "wybin" %}
+{{ empty_state("The pool for this stage is not published on wybin yet. It will appear here automatically.") }}
+{% else %}
+{{ empty_state("This stage has no maps yet. An administrator adds them on the admin page.") }}
+{% endif %}
+{% else %}
+
+<section class="stack" aria-labelledby="suggestion-heading">
+  <h2 id="suggestion-heading">Suggested lineup</h2>
+  <p class="muted">The {{ lineup_size }} {{ "player" if lineup_size == 1 else "players" }} with the best {{ "score" if lineup_size == 1 else "scores" }} on each map, using {{ scoring_label }} scores. Ties go to the higher accuracy, then the more recent score.</p>
+  <form class="row" method="get" action="/t/{{ tournament.id }}/lineup">
+    <input type="hidden" name="stage" value="{{ stage.id }}">
+    {{ checkbox("subs", "Include substitutes", checked=include_substitutes) }}
+    {{ button("Update suggestion", variant="secondary", type="submit") }}
+  </form>
+
+  {% call table("Suggested lineup for " ~ stage.name) %}
+  <thead>
+    <tr>
+      <th scope="col">Map</th>
+      <th scope="col">Players</th>
+      <th scope="col">Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for pool_map in pool %}
+    {% set suggestion = suggestions[pool_map.id] %}
+    <tr>
+      <th scope="row">{{ badge(pool_map.slot) }} {{ map_name(pool_map) }}</th>
+      <td>
+        {% if suggestion.picks %}
+        <ul class="picks">
+          {% for pick in suggestion.picks %}
+          <li>{{ names.get(pick.osu_id, "osu! user " ~ pick.osu_id) }} <span class="num muted">{{ pick.score.score|fmt_score }} &middot; {{ pick.score.accuracy|fmt_acc }}</span>{{ show_mods(pool_map, pick.mods) }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <span class="muted">Nobody has a score</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if suggestion.incomplete and suggestion.picks %}Only {{ suggestion.picks|length }} of {{ lineup_size }} have a score.{% endif %}
+        {% if suggestion.rule_unmet %}The freemod rule needs two different mods; no other mod has a score.{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+
+  {% if can_manage %}
+  <div>
+    {% if saved %}
+    {{ button("Copy suggested lineup", variant="secondary", icon_name="copy", disabled=archived, data_dialog_open="copy-suggestion") }}
+    {% call dialog("copy-suggestion", "Replace the saved lineup?", "Copy suggested lineup", action="/t/" ~ tournament.id ~ "/lineup/copy-suggestion", csrf=csrf_token) %}
+    <input type="hidden" name="stage" value="{{ stage.id }}">
+    {% if include_substitutes %}<input type="hidden" name="include_substitutes" value="1">{% endif %}
+    <p>The saved lineup for {{ stage.name }} is replaced by the suggestion and becomes a draft.</p>
+    {% endcall %}
+    {% else %}
+    <form method="post" action="/t/{{ tournament.id }}/lineup/copy-suggestion">
+      {{ csrf_field(csrf_token) }}
+      <input type="hidden" name="stage" value="{{ stage.id }}">
+      {% if include_substitutes %}<input type="hidden" name="include_substitutes" value="1">{% endif %}
+      {{ button("Copy suggested lineup", variant="secondary", type="submit", icon_name="copy", disabled=archived) }}
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="stack" aria-labelledby="saved-heading">
+  <h2 id="saved-heading">Saved lineup</h2>
+  {% if saved %}
+  <p class="muted">{{ badge("Final" if saved.status == "final" else "Draft") }} Saved {{ local_time(saved.updated_at) }}</p>
+  {% endif %}
+
+  {% if can_manage %}
+  <form class="stack" method="post" action="/t/{{ tournament.id }}/lineup">
+    {{ csrf_field(csrf_token) }}
+    <input type="hidden" name="stage" value="{{ stage.id }}">
+    <div class="sheet">
+    {% call table("Edit the saved lineup for " ~ stage.name) %}
+    <thead>
+      <tr>
+        <th scope="col">Map</th>
+        <th scope="col">Players</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for pool_map in pool %}
+      <tr>
+        <th scope="row">{{ badge(pool_map.slot) }} {{ map_name(pool_map) }}</th>
+        <td>
+          <div class="slot-edit">
+            {% for slot in range(lineup_size) %}
+            {% set pkey = pick_field(pool_map.id, slot) %}
+            {% set mkey = mods_field(pool_map.id, slot) %}
+            {{ field(pkey, "Player " ~ (slot + 1) ~ " on " ~ pool_map.slot, options=player_options, value=form_values[pkey]|default(""), label_hidden=true, disabled=archived, error=form_error if ff == pkey else none) }}
+            {% if pool_map.is_freemod or pool_map.is_tiebreaker %}
+            <div class="picks__mods">{{ field(mkey, "Mods of player " ~ (slot + 1) ~ " on " ~ pool_map.slot, value=form_values[mkey]|default(""), placeholder="Mods, e.g. HD", label_hidden=true, disabled=archived, autocomplete="off", error=form_error if ff == mkey else none) }}</div>
+            {% endif %}
+            {% endfor %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    </div>
+    {{ field("status", "Status", options=[("draft", "Draft"), ("final", "Final")], value=form_values.status|default(saved.status if saved else "draft"), required=true, disabled=archived, error=form_error if ff == "status" else none) }}
+    <div>{{ button("Save lineup", variant="primary", type="submit", disabled=archived) }}</div>
+  </form>
+  {% elif saved %}
+  {% call table("Saved lineup for " ~ stage.name) %}
+  <thead>
+    <tr>
+      <th scope="col">Map</th>
+      <th scope="col">Players</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for pool_map in pool %}
+    <tr>
+      <th scope="row">{{ badge(pool_map.slot) }} {{ map_name(pool_map) }}</th>
+      <td>
+        {% if slots[pool_map.id] %}
+        <ul class="picks">
+          {% for entry in slots[pool_map.id] %}
+          <li>{{ names.get(entry.osu_id, "Former member") }}{{ show_mods(pool_map, entry.mods) }}</li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <span class="muted">Nobody</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  {% else %}
+  {{ empty_state("No lineup is saved yet. A captain can copy the suggestion to start one.") }}
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

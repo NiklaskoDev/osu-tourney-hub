@@ -602,6 +602,118 @@ textarea.field__control {
   margin-top: var(--space-5);
 }
 
+/* Pool sheet: taller scroll area, map names that truncate, a second line under a score */
+.sheet .table-wrap {
+  max-height: 70vh;
+}
+
+.map-name {
+  display: inline-block;
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* On a phone the sticky first column must leave room for the scores beside it */
+@media (max-width: 767px) {
+  .map-name {
+    max-width: 7rem;
+  }
+}
+
+.cell-sub {
+  display: block;
+  font-size: var(--text-xs);
+}
+
+.table tfoot th,
+.table tfoot td {
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+}
+
+.old-flag {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+}
+
+/* One map's scores and notes: a native disclosure, no script */
+.map-detail {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.map-detail > summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+
+.map-detail__body {
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notes__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.notes__item p {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+fieldset.field {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Lineup: players of one map stacked in a cell */
+.picks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.picks__mods {
+  width: 7rem;
+}
+
+.slot-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 /* Countdown and relative times */
 .countdown {
   font-variant-numeric: tabular-nums;

@@ -19,6 +19,10 @@ EXPECTED_TABLES = {
     "tournament_members",
     "stages",
     "pool_maps",
+    "scores",
+    "notes",
+    "lineups",
+    "lineup_entries",
 }
 
 
@@ -277,3 +281,127 @@ def test_deleting_a_user_keeps_their_tournaments_but_clears_the_owner(migrated):
 
     row = migrated.execute("SELECT owner_osu_id FROM tournaments WHERE id = ?", (tournament_id,))
     assert row.fetchone()[0] is None
+
+
+# --- 0003: scores, notes, lineups ---
+
+SCORE_COLUMNS = (
+    "(beatmap_id, osu_id, gamemode, mods, score, scoring, accuracy, source, source_ref, created_at)"
+)
+
+
+def add_score_row(conn, **overrides):
+    values = {
+        "beatmap_id": 1001,
+        "osu_id": 5,
+        "gamemode": 0,
+        "mods": "",
+        "score": 800_000,
+        "scoring": "v2",
+        "accuracy": 97.0,
+        "source": "manual",
+        "source_ref": "ref-1",
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+    values.update(overrides)
+    columns = ", ".join(values)
+    marks = ", ".join("?" for _ in values)
+    return conn.execute(
+        f"INSERT INTO scores ({columns}) VALUES ({marks})",  # noqa: S608 - test-only keys
+        tuple(values.values()),
+    ).lastrowid
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"score": -1},
+        {"score": 2_000_000_001},
+        {"accuracy": 100.5},
+        {"accuracy": -0.1},
+        {"gamemode": 4},
+        {"scoring": "v3"},
+        {"source": "guess"},
+        {"passed": 2},
+    ],
+)
+def test_score_constraints(migrated, overrides):
+    with pytest.raises(sqlite3.IntegrityError):
+        add_score_row(migrated, **overrides)
+
+
+def test_the_same_score_from_the_same_source_cannot_be_stored_twice(migrated):
+    add_score_row(migrated)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        add_score_row(migrated)
+    add_score_row(migrated, osu_id=6)  # another player's row with the same reference is fine
+
+
+def test_scores_of_people_who_never_logged_in_can_be_stored(migrated):
+    assert add_score_row(migrated, osu_id=987654)
+
+
+def test_deleting_a_tournament_keeps_its_scores_without_the_link(migrated):
+    tournament_id = add_tournament(migrated)
+    add_score_row(migrated, tournament_id=tournament_id)
+
+    migrated.execute("DELETE FROM tournaments WHERE id = ?", (tournament_id,))
+
+    assert migrated.execute("SELECT tournament_id FROM scores").fetchone()[0] is None
+
+
+def make_stage(conn):
+    tournament_id = add_tournament(conn)
+    stage_id = conn.execute(
+        "INSERT INTO stages (tournament_id, name, sort_order, is_qualifier) VALUES (?, 'Q', 1, 0)",
+        (tournament_id,),
+    ).lastrowid
+    return tournament_id, stage_id
+
+
+def add_lineup(conn, tournament_id, stage_id, match_id=None, status="draft"):
+    return conn.execute(
+        "INSERT INTO lineups (tournament_id, stage_id, match_id, status, updated_at) "
+        "VALUES (?, ?, ?, ?, '2026-01-01T00:00:00Z')",
+        (tournament_id, stage_id, match_id, status),
+    ).lastrowid
+
+
+def test_a_stage_has_one_lineup_without_a_match_but_may_have_one_per_match(migrated):
+    tournament_id, stage_id = make_stage(migrated)
+    add_lineup(migrated, tournament_id, stage_id)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        add_lineup(migrated, tournament_id, stage_id)
+    add_lineup(migrated, tournament_id, stage_id, match_id=1)
+    add_lineup(migrated, tournament_id, stage_id, match_id=2)
+    with pytest.raises(sqlite3.IntegrityError):
+        add_lineup(migrated, tournament_id, stage_id, match_id=2)
+
+
+def test_a_lineup_status_is_draft_or_final(migrated):
+    tournament_id, stage_id = make_stage(migrated)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        add_lineup(migrated, tournament_id, stage_id, status="published")
+
+
+def test_notes_are_limited_to_2000_characters_and_known_visibilities(migrated):
+    tournament_id, stage_id = make_stage(migrated)
+    map_id = migrated.execute(
+        "INSERT INTO pool_maps (stage_id, slot, bracket, required_mods, is_freemod, "
+        "is_tiebreaker, sort_order) VALUES (?, 'NM1', 'NoMod', '', 0, 0, 1)",
+        (stage_id,),
+    ).lastrowid
+    insert = (
+        "INSERT INTO notes (tournament_id, pool_map_id, author_osu_id, visibility, body, "
+        "updated_at) VALUES (?, ?, 5, ?, ?, '2026-01-01T00:00:00Z')"
+    )
+
+    migrated.execute(insert, (tournament_id, map_id, "team", "x" * 2000))
+    for visibility, body in (("team", "x" * 2001), ("everyone", "ok")):
+        with pytest.raises(sqlite3.IntegrityError):
+            migrated.execute(insert, (tournament_id, map_id, visibility, body))
+    migrated.execute("DELETE FROM pool_maps WHERE id = ?", (map_id,))
+    assert migrated.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == 0

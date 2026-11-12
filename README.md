@@ -6,8 +6,8 @@ suggestions, availability, an MP lobby skimmer and matchup predictions.
 
 Status: early development. The container, configuration, database migrations, `/healthz`, login
 with osu!, tournament roles and member management, tournaments (imported from wybin or entered by
-hand) with stages, map pools and teams, and an admin-only design `/styleguide` exist; the other
-features arrive phase by phase (see `docs/plans/`).
+hand) with stages, map pools and teams, the mappool sheet (scores, notes, averages) with lineup
+suggestions, and an admin-only design `/styleguide` exist; the other features arrive phase by phase (see `docs/plans/`).
 
 ## Set up the osu! OAuth application
 

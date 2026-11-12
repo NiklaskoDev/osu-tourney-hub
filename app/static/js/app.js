@@ -46,6 +46,13 @@
     });
   }
 
+  // A dialog marked data-autoopen holds a form that came back with an error: show it again.
+  function openMarkedDialogs(root) {
+    root.querySelectorAll("dialog[data-autoopen]").forEach(function (dialog) {
+      if (!dialog.open) dialog.showModal();
+    });
+  }
+
   function renderAll(root) {
     renderLocalTimes(root);
     detectTimezone(root);
@@ -104,6 +111,7 @@
 
   document.addEventListener("DOMContentLoaded", function () {
     renderAll(document);
+    openMarkedDialogs(document);
     window.setInterval(tickCountdowns, 1000);
   });
   document.addEventListener("htmx:afterSwap", function (event) {

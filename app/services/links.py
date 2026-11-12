@@ -4,6 +4,7 @@ import re
 
 _MATCH_LINK = re.compile(r"matches/(\d+)")
 _MAP_LINK = re.compile(r"(?:#\w+/|/b/|/beatmaps/)(\d+)")
+_SCORE_LINK = re.compile(r"scores/(?:[a-z]+/)?(\d+)")
 _BARE_NUMBER = re.compile(r"\s*(\d+)\s*")
 
 
@@ -26,3 +27,16 @@ def map_id(text: str) -> int | None:
     """Beatmap id from 129891, /b/129891, beatmapsets/X#osu/129891 or /beatmaps/129891."""
     found = _MAP_LINK.search(text) or _BARE_NUMBER.fullmatch(text)
     return _id_from(found)
+
+
+def source_link(text: str) -> str | None:
+    """A clean osu! link for a pasted score or multiplayer match link, rebuilt from the id so
+    nothing else the person typed is kept. None for anything else."""
+    value = text.strip()
+    score = _id_from(_SCORE_LINK.search(value))
+    if score is not None:
+        return f"https://osu.ppy.sh/scores/{score}"
+    match = _id_from(_MATCH_LINK.search(value))
+    if match is not None:
+        return f"https://osu.ppy.sh/community/matches/{match}"
+    return None

@@ -51,6 +51,9 @@ ALLOWED_MODS: dict[int, frozenset[str]] = {
     MANIA: frozenset((*_COMMON, *_MANIA_KEYS, "FI", "RD", "MR")),
 }
 
+# Mods worth offering when entering a freemod score, in the game's order. Relax, Auto-pilot,
+# ScoreV2, key mods and the like are never played in a tournament.
+_PICKABLE_MODS = ("EZ", "HD", "HR", "DT", "NC", "HT", "FL", "FI", "MR", "SD", "PF")
 IGNORED_MODS = frozenset({"NF"})
 NO_MOD_LABEL = "NM"
 FREEMOD_SLOT = "FM"
@@ -120,6 +123,11 @@ def canonical_mods(acronyms: Iterable[str], gamemode: int) -> str:
     if "PF" in found:
         found.discard("SD")
     return "".join(sorted(found))
+
+
+def selectable_mods(gamemode: int) -> list[str]:
+    """Mods a person can tick for a freemod score in this mode."""
+    return [mod for mod in _PICKABLE_MODS if mod in ALLOWED_MODS[gamemode]]
 
 
 def split_mods(text: str) -> list[str]:

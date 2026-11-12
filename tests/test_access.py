@@ -6,7 +6,14 @@ import pytest
 
 from app.domain.models import Member, Role
 from app.services.access import effective_role, is_temp_captain_active, role_for, role_label
-from tests.support import ADMIN_ID, add_member, add_tournament, add_user
+from tests.support import (
+    ADMIN_ID,
+    add_member,
+    add_pool_map,
+    add_stage,
+    add_tournament,
+    add_user,
+)
 
 NOW = datetime(2026, 11, 12, 12, 30, 15, tzinfo=UTC)
 LATER = "2026-11-12T13:30:00Z"
@@ -139,7 +146,12 @@ def act_as(client, login, csrf):
 def test_viewing_pages(case, arranged, client, act_as):
     act_as(case)
 
-    for path in (f"/t/{arranged}", f"/t/{arranged}/members"):
+    for path in (
+        f"/t/{arranged}",
+        f"/t/{arranged}/members",
+        f"/t/{arranged}/pool",
+        f"/t/{arranged}/lineup",
+    ):
         assert client.get(path, follow_redirects=False).status_code == expected_view(case), path
 
 
@@ -168,6 +180,64 @@ def test_changing_the_roster(case, arranged, client, act_as, db):
         (arranged, TARGET),
     ).fetchone()
     assert (target_row is None) == allowed  # removed last, so only managers get this far
+
+
+@pytest.fixture
+def pool(arranged, db):
+    stage = add_stage(db, arranged)
+    return stage, add_pool_map(db, stage, "NM1")
+
+
+def expected_player_write(case: str) -> int:
+    """Players and above add scores and notes; guests are read-only."""
+    if case in READERS - {"guest"}:
+        return 303
+    if case == "anonymous":
+        return 403
+    return 404 if case == "non_member" else 403
+
+
+@pytest.mark.parametrize("case", ROLES)
+def test_adding_scores_and_notes(case, arranged, pool, client, act_as, db):
+    token = act_as(case)
+    stage, pool_map = pool
+    base = f"/t/{arranged}"
+    player = {"osu_id": str(TARGET)} if case == "admin" else {}  # an admin has no roster entry
+
+    score = client.post(
+        f"{base}/scores",
+        data={**token, **player, "pool_map_id": str(pool_map), "score": "800000", "accuracy": "97"},
+        follow_redirects=False,
+    )
+    note = client.post(
+        f"{base}/notes",
+        data={**token, "pool_map_id": str(pool_map), "body": "hi", "visibility": "team"},
+        follow_redirects=False,
+    )
+
+    assert (score.status_code, note.status_code) == (expected_player_write(case),) * 2, case
+    assert db.execute("SELECT COUNT(*) FROM scores").fetchone()[0] == int(score.status_code == 303)
+    assert db.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == int(note.status_code == 303)
+
+
+@pytest.mark.parametrize("case", ROLES)
+def test_saving_lineups(case, arranged, pool, client, act_as, db):
+    token = act_as(case)
+    stage, pool_map = pool
+    base = f"/t/{arranged}/lineup"
+
+    copied = client.post(
+        f"{base}/copy-suggestion", data={**token, "stage": str(stage)}, follow_redirects=False
+    )
+    saved = client.post(
+        base,
+        data={**token, "stage": str(stage), "status": "final", f"pick_{pool_map}_0": str(TARGET)},
+        follow_redirects=False,
+    )
+
+    assert (copied.status_code, saved.status_code) == (expected_write(case),) * 2, case
+    expected_rows = int(case in MANAGERS)
+    assert db.execute("SELECT COUNT(*) FROM lineups").fetchone()[0] == expected_rows
 
 
 def test_a_non_member_cannot_tell_a_real_tournament_from_a_missing_one(client, arranged, act_as):

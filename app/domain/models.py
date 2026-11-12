@@ -170,3 +170,63 @@ class Member:
     is_substitute: bool
     temp_captain_until: str | None
     source: str | None
+
+
+@dataclass(frozen=True)
+class Score:
+    """One score of one player on one beatmap. `mods` is canonical; `accuracy` is 0 to 100."""
+
+    id: int
+    beatmap_id: int
+    osu_id: int
+    gamemode: int
+    mods: str
+    score: int
+    scoring: str
+    accuracy: float
+    max_combo: int | None
+    misses: int | None
+    passed: bool
+    achieved_at: str | None
+    source: str
+    source_ref: str
+    source_url: str | None
+    entered_by: int | None
+    tournament_id: int | None
+    created_at: str
+
+    @property
+    def played_at(self) -> str:
+        """When it was played; a hand-entered score without a date counts from when it was added."""
+        return self.achieved_at or self.created_at
+
+
+@dataclass(frozen=True)
+class Note:
+    id: int
+    tournament_id: int
+    pool_map_id: int
+    author_osu_id: int
+    visibility: str
+    body: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class Lineup:
+    """The saved lineup of a stage (`match_id` stays empty until matches exist)."""
+
+    id: int
+    tournament_id: int
+    stage_id: int
+    match_id: int | None
+    status: str
+    updated_by: int | None
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class LineupEntry:
+    pool_map_id: int
+    osu_id: int
+    mods: str

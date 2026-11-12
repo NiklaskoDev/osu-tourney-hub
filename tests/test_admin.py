@@ -583,6 +583,60 @@ def test_an_archived_tournament_cannot_be_hidden_which_would_make_it_visible_to_
     assert status_of(db, spring)[0] == "archived"
 
 
+def test_a_hidden_tournament_cannot_be_archived_until_it_is_restored(client, as_admin, db, spring):
+    post(client, f"/admin/tournaments/{spring}/hide", token=as_admin)
+
+    response = post(client, f"/admin/tournaments/{spring}/archive", token=as_admin)
+
+    assert response.status_code == 409
+    assert "Restore it before archiving it." in response.text
+    assert status_of(db, spring)[0] == "hidden"
+    post(client, f"/admin/tournaments/{spring}/unarchive", token=as_admin)
+    assert post(client, f"/admin/tournaments/{spring}/archive", token=as_admin).status_code == 303
+
+
+# --- unreadable map pool ---
+
+POOL_WARNING = "Teams and stages were updated; the map pool could not be read."
+
+
+def test_importing_with_an_unreadable_pool_warns_instead_of_reporting_plain_success(
+    client, as_admin, db, fake
+):
+    fake.mappools.clear()
+
+    response = import_cup(client, as_admin)
+
+    assert response.status_code == 303
+    page = client.get(response.headers["location"]).text
+    assert POOL_WARNING in page and "alert--warning" in page
+    assert "Synthetic Catch Cup imported." not in page
+    assert db.execute("SELECT COUNT(*) FROM stages").fetchone()[0] == 3
+
+
+def test_sync_now_with_an_unreadable_pool_warns_instead_of_reporting_plain_success(
+    client, as_admin, db, fake
+):
+    import_cup(client, as_admin)
+    tid = tournament_id(db)
+    fake.mappools.clear()
+
+    response = post(client, f"/admin/tournaments/{tid}/sync", token=as_admin)
+
+    assert response.status_code == 303
+    page = client.get("/admin").text
+    assert POOL_WARNING in page and "alert--warning" in page
+    assert "is up to date with wybin." not in page
+
+
+def test_a_readable_pool_still_reports_plain_success(client, as_admin, db):
+    import_cup(client, as_admin)
+
+    page = client.get(f"/t/{tournament_id(db)}").text
+
+    assert "Synthetic Catch Cup imported." in page and POOL_WARNING not in page
+
+
 # --- deleting a wybin tournament ---
 
 
