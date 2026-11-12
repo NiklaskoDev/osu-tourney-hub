@@ -1,0 +1,15 @@
+{
+  "id": 100011,
+  "participantTournaments": [
+    {
+      "id": 9001,
+      "slug": "synthetic-cup",
+      "name": "Synthetic Catch Cup"
+    },
+    {
+      "id": 9002,
+      "slug": "synthetic-solo",
+      "name": "Synthetic Solo Open"
+    }
+  ]
+}

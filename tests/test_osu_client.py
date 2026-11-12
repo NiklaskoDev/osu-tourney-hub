@@ -267,3 +267,75 @@ async def test_other_client_errors_are_not_retried(settings, clock, limiter, del
         await client.get_me("token")
 
     assert len(calls) == 1
+
+
+# --- beatmaps (manual pools) ---
+
+
+async def test_get_beatmap_returns_the_public_metadata(osu_client, osu):
+    osu.add_beatmap(129891, artist="Synth Artist", title="Song")
+
+    beatmap = await osu_client.get_beatmap(129891)
+
+    assert (beatmap.beatmap_id, beatmap.beatmapset_id) == (129891, 130891)
+    assert (beatmap.artist, beatmap.title, beatmap.version, beatmap.mapper) == (
+        "Synth Artist",
+        "Song",
+        "Insane",
+        "MapperMia",
+    )
+    assert (beatmap.star_rating, beatmap.bpm, beatmap.length_s) == (6.25, 180.0, 200)
+    assert (beatmap.cs, beatmap.ar, beatmap.od, beatmap.hp) == (4.0, 9.0, 8.5, 5.0)
+
+
+async def test_get_beatmap_uses_the_app_token_and_the_given_priority(osu_client, osu, limiter):
+    osu.add_beatmap(7)
+
+    await osu_client.get_beatmap(7, Priority.CAPTURE)
+
+    (lookup,) = osu.calls("GET", "/beatmaps/7")
+    assert lookup.headers["Authorization"] == f"Bearer {APP_TOKEN}"
+    assert Priority.CAPTURE in limiter.priorities
+
+
+async def test_an_unknown_beatmap_is_not_found(osu_client):
+    with pytest.raises(OsuNotFound):
+        await osu_client.get_beatmap(404404)
+
+
+async def test_a_rejected_token_is_replaced_once_for_beatmaps_too(osu_client, osu):
+    osu.add_beatmap(7)
+    osu.failures = [401]
+
+    beatmap = await osu_client.get_beatmap(7)
+
+    assert beatmap.beatmap_id == 7
+    assert len(osu.calls("POST", "/oauth/token")) == 2
+
+
+async def test_a_beatmap_for_a_different_id_is_refused(osu_client, osu):
+    osu.add_beatmap(7)
+    osu.beatmaps[8] = osu.beatmaps[7]
+
+    with pytest.raises(OsuUnavailable):
+        await osu_client.get_beatmap(8)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{}, {"id": 7}, {"id": 7, "version": "x"}, {"id": "7", "version": "x", "beatmapset": {}}],
+)
+async def test_beatmaps_in_an_unexpected_shape_are_refused(osu_client, osu, payload):
+    osu.beatmaps[7] = payload
+
+    with pytest.raises(OsuUnavailable):
+        await osu_client.get_beatmap(7)
+
+
+async def test_missing_optional_beatmap_fields_become_none(osu_client, osu):
+    osu.beatmaps[7] = {"id": 7, "version": "Easy", "beatmapset": {}}
+
+    beatmap = await osu_client.get_beatmap(7)
+
+    assert (beatmap.artist, beatmap.title, beatmap.mapper) == (None, None, None)
+    assert (beatmap.star_rating, beatmap.bpm, beatmap.length_s, beatmap.cs) == (None,) * 4

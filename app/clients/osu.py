@@ -22,7 +22,7 @@ from app.clients.http import REQUEST_TIMEOUT
 from app.clients.ratelimit import Priority, RateLimiter
 from app.clock import Clock
 from app.config import Settings
-from app.domain.models import OsuProfile
+from app.domain.models import BeatmapMeta, OsuProfile
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ LOGIN_SCOPE = "identify"
 MAX_ATTEMPTS = 5
 TOKEN_EXPIRY_MARGIN_S = 60
 MAX_USERNAME_LENGTH = 64
+MAX_METADATA_LENGTH = 200
 AVATAR_HOSTS = frozenset({"a.ppy.sh", "assets.ppy.sh"})
 
 Sleep = Callable[[float], Awaitable[None]]
@@ -123,24 +124,35 @@ class OsuClient:
 
     async def get_user(self, osu_id: int, priority: Priority = Priority.INTERACTIVE) -> OsuProfile:
         """Public profile by id. Raises `OsuNotFound` for an unknown or hidden user."""
-        try:
-            data = await self._fetch_user(osu_id, priority)
-        except OsuAuthError:
-            self._token = None  # revoked or expired early: fetch a new token once and retry
-            data = await self._fetch_user(osu_id, priority)
+        data = await self._app_get(f"{API_BASE}/users/{osu_id}", priority, {"key": "id"})
         profile = _parse_profile(data)
         if profile.osu_id != osu_id:
             raise OsuUnavailable("osu! returned a different user")
         return profile
 
-    async def _fetch_user(self, osu_id: int, priority: Priority) -> dict[str, Any]:
-        return await self._request(
-            "GET",
-            f"{API_BASE}/users/{osu_id}",
-            bearer=await self.client_token(),
-            params={"key": "id"},
-            priority=priority,
-        )
+    async def get_beatmap(
+        self, beatmap_id: int, priority: Priority = Priority.INTERACTIVE
+    ) -> BeatmapMeta:
+        """Metadata of one beatmap, for manual pools. Raises `OsuNotFound` for an unknown map."""
+        data = await self._app_get(f"{API_BASE}/beatmaps/{beatmap_id}", priority)
+        beatmap = _parse_beatmap(data)
+        if beatmap.beatmap_id != beatmap_id:
+            raise OsuUnavailable("osu! returned a different beatmap")
+        return beatmap
+
+    async def _app_get(
+        self, url: str, priority: Priority, params: dict[str, str] | None = None
+    ) -> dict[str, Any]:
+        """GET with the app's own token; a rejected token is replaced once and the call retried."""
+        try:
+            return await self._request(
+                "GET", url, bearer=await self.client_token(), params=params, priority=priority
+            )
+        except OsuAuthError:
+            self._token = None  # revoked or expired early: fetch a new token once and retry
+            return await self._request(
+                "GET", url, bearer=await self.client_token(), params=params, priority=priority
+            )
 
     async def client_token(self) -> str:
         """Client-credentials token (scope public), cached until shortly before it expires."""
@@ -235,14 +247,57 @@ def _parse_profile(data: dict[str, Any]) -> OsuProfile:
     return OsuProfile(
         osu_id=osu_id,
         username=username,
-        avatar_url=_safe_avatar(data.get("avatar_url")),
+        avatar_url=safe_avatar(data.get("avatar_url")),
         country=country if isinstance(country, str) and len(country) == 2 else None,
     )
 
 
-def _safe_avatar(value: object) -> str | None:
+def safe_avatar(value: object) -> str | None:
     """Keep only https avatar URLs on osu! image hosts, the same hosts the CSP allows."""
     if not isinstance(value, str):
         return None
     parts = urlsplit(value)
     return value if parts.scheme == "https" and parts.hostname in AVATAR_HOSTS else None
+
+
+def _parse_beatmap(data: dict[str, Any]) -> BeatmapMeta:
+    beatmap_id = data.get("id")
+    version = data.get("version")
+    beatmapset = data.get("beatmapset")
+    if not (
+        isinstance(beatmap_id, int)
+        and not isinstance(beatmap_id, bool)
+        and beatmap_id > 0
+        and isinstance(version, str)
+        and isinstance(beatmapset, dict)
+    ):
+        raise OsuUnavailable("osu! sent a beatmap in an unexpected shape")
+    return BeatmapMeta(
+        beatmap_id=beatmap_id,
+        beatmapset_id=_int_or_none(data.get("beatmapset_id")),
+        artist=_text_or_none(beatmapset.get("artist")),
+        title=_text_or_none(beatmapset.get("title")),
+        version=version[:MAX_METADATA_LENGTH],
+        mapper=_text_or_none(beatmapset.get("creator")),
+        star_rating=_number_or_none(data.get("difficulty_rating")),
+        bpm=_number_or_none(data.get("bpm")),
+        length_s=_int_or_none(data.get("total_length")),
+        cs=_number_or_none(data.get("cs")),
+        ar=_number_or_none(data.get("ar")),
+        od=_number_or_none(data.get("accuracy")),
+        hp=_number_or_none(data.get("drain")),
+    )
+
+
+def _text_or_none(value: object) -> str | None:
+    return value[:MAX_METADATA_LENGTH] if isinstance(value, str) and value else None
+
+
+def _int_or_none(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _number_or_none(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return float(value)

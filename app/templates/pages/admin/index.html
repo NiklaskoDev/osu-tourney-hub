@@ -1,0 +1,162 @@
+{% extends "layout/shell.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/button.html" import button %}
+{% from "components/checkbox.html" import checkbox %}
+{% from "components/countdown.html" import local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/dialog.html" import dialog %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% block title %}Admin - {% endblock %}
+{% block content %}
+{% set vals = create_values|default({}) %}
+{% set cf = create_field|default(none) %}
+<div class="page__header">
+  <h1>Admin</h1>
+</div>
+
+{% if action_error %}
+{% call alert("error", "That did not work") %}{{ action_error }}{% endcall %}
+{% endif %}
+
+<div class="stack sections">
+
+  <section class="stack" aria-labelledby="tournaments-heading">
+    <h2 id="tournaments-heading">Tournaments</h2>
+    {% if rows %}
+    {% call table("All tournaments") %}
+    <thead>
+      <tr>
+        <th scope="col">Tournament</th>
+        <th scope="col">Mode</th>
+        <th scope="col">Source</th>
+        <th scope="col">Status</th>
+        <th scope="col">Last synced</th>
+        <th scope="col"><span class="visually-hidden">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set t = row.tournament %}
+      <tr>
+        <th scope="row"><a href="/t/{{ t.id }}">{{ t.name }}</a>{% if t.acronym %} <span class="muted">{{ t.acronym }}</span>{% endif %}</th>
+        <td>{{ row.mode }}</td>
+        <td>{{ "wybin" if row.from_wybin else "By hand" }}</td>
+        <td>{{ row.status }}</td>
+        <td>{% if t.last_synced_at %}{{ local_time(t.last_synced_at) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+        <td>
+          <div class="row row--nowrap">
+            {{ button("Stages and maps", variant="text", href="/admin/tournaments/" ~ t.id) }}
+            {% if row.from_wybin and t.status == "active" %}
+            <form method="post" action="/admin/tournaments/{{ t.id }}/sync">
+              {{ csrf_field(csrf_token) }}
+              {{ button("Sync now", variant="secondary", type="submit", icon_name="refresh-cw") }}
+            </form>
+            {% endif %}
+            {% if t.status == "active" %}
+            {{ button("Archive", variant="secondary", data_dialog_open="archive-" ~ t.id) }}
+            {% call dialog("archive-" ~ t.id, "Archive " ~ t.name ~ "?", "Archive", action="/admin/tournaments/" ~ t.id ~ "/archive", csrf=csrf_token) %}
+            <p>Everyone can still read it, but nothing in it can be changed until you restore it.</p>
+            {{ field("final_placing", "Final placing", value=t.final_placing or "", id="placing-" ~ t.id, hint="For example Top 8 or Champions.", maxlength="60") }}
+            {% endcall %}
+            {% else %}
+            <form method="post" action="/admin/tournaments/{{ t.id }}/unarchive">
+              {{ csrf_field(csrf_token) }}
+              {{ button("Restore", variant="secondary", type="submit") }}
+            </form>
+            {% endif %}
+            {% if t.status != "hidden" %}
+            <form method="post" action="/admin/tournaments/{{ t.id }}/hide">
+              {{ csrf_field(csrf_token) }}
+              {{ button("Hide", variant="text", type="submit") }}
+            </form>
+            {% endif %}
+            {{ button("Delete", variant="text", icon_name="trash-2", data_dialog_open="delete-" ~ t.id) }}
+            {% call dialog("delete-" ~ t.id, "Delete " ~ t.name ~ "?", "Delete tournament", danger=true, action="/admin/tournaments/" ~ t.id ~ "/delete", csrf=csrf_token) %}
+            <p>This deletes the tournament with its stages, maps, teams and roster. It cannot be undone. A tournament from wybin is not imported again automatically, but you can still import it by hand. You need to have logged in within the last five minutes; otherwise you are sent through the login first.</p>
+            {{ field("confirm", "Type " ~ row.confirm_text ~ " to confirm", id="confirm-" ~ t.id, required=true, autocomplete="off") }}
+            {% endcall %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    {% else %}
+    {{ empty_state("No tournaments exist yet. Import one from wybin or create one by hand below.") }}
+    {% endif %}
+  </section>
+
+  <section class="stack" aria-labelledby="import-heading">
+    <h2 id="import-heading">Import from wybin</h2>
+    <p class="muted">Paste the address of the tournament on wybin.xyz or its short name. Stages, map pool, teams and players are copied; the players of your team become members.</p>
+    <form class="stack" method="post" action="/admin/tournaments/import">
+      {{ csrf_field(csrf_token) }}
+      {{ field("link", "wybin address or slug", value=import_entered|default(""), required=true, error=import_error|default(none), placeholder="https://wybin.xyz/4cwc25/home", autocomplete="off") }}
+      <div>{{ button("Import from wybin", variant="primary", type="submit", icon_name="download") }}</div>
+    </form>
+  </section>
+
+  <section class="stack" aria-labelledby="link-heading">
+    <h2 id="link-heading">Your wybin account</h2>
+    {% if link %}
+    <p>Linked to wybin user <span class="mono">{{ link.wybin_user_id }}</span>. Tournaments you sign up for on wybin are imported automatically, about every six hours.{% if link.last_checked_at %} Last checked {{ local_time(link.last_checked_at) }}.{% endif %}</p>
+    <form method="post" action="/admin/wybin-link/remove">
+      {{ csrf_field(csrf_token) }}
+      {{ button("Unlink wybin account", variant="secondary", type="submit") }}
+    </form>
+    {% else %}
+    <p class="muted">Link your wybin account and the tournaments you sign up for are imported automatically. A tournament you hide is never imported again.</p>
+    {% endif %}
+    <form class="stack" method="post" action="/admin/wybin-link">
+      {{ csrf_field(csrf_token) }}
+      {{ field("wybin_user_id", "wybin user id", value=link_entered|default(""), required=true, error=link_error|default(none), inputmode="numeric", autocomplete="off", hint="The number that identifies your account on wybin.") }}
+      <div>{{ button("Link wybin account" if not link else "Change linked account", variant="secondary", type="submit") }}</div>
+    </form>
+  </section>
+
+  <section class="stack" aria-labelledby="create-heading">
+    <h2 id="create-heading">Create a tournament by hand</h2>
+    <p class="muted">For tournaments that are not on wybin. You become its captain; add stages and maps on the next page.</p>
+    <form class="stack" method="post" action="/admin/tournaments">
+      {{ csrf_field(csrf_token) }}
+      {{ field("name", "Name", value=vals.name|default(""), required=true, error=create_error if cf == "name" else none, maxlength="100", autocomplete="off") }}
+      {{ field("acronym", "Acronym", value=vals.acronym|default(""), error=create_error if cf == "acronym" else none, maxlength="16", autocomplete="off") }}
+      {{ field("gamemode", "Game mode", options=mode_options, value=vals.gamemode|default("0"), required=true, error=create_error if cf == "gamemode" else none) }}
+      {{ checkbox("is_solo", "Solo tournament (one player per entry)", checked=vals.is_solo|default(false)) }}
+      <div class="row row--top">
+        {{ field("team_size_min", "Smallest team", value=vals.team_size_min|default(""), error=create_error if cf == "team_size_min" else none, inputmode="numeric", hint="Ignored for solo.") }}
+        {{ field("team_size_max", "Largest team", value=vals.team_size_max|default(""), error=create_error if cf == "team_size_max" else none, inputmode="numeric") }}
+      </div>
+      {% if create_error and not cf %}{% call alert("error", "Tournament not created") %}{{ create_error }}{% endcall %}{% endif %}
+      <div>{{ button("Create tournament", variant="secondary", type="submit", icon_name="plus") }}</div>
+    </form>
+  </section>
+
+  <section class="stack" aria-labelledby="jobs-heading">
+    <h2 id="jobs-heading">Background jobs</h2>
+    {% call table("Background jobs") %}
+    <thead>
+      <tr>
+        <th scope="col">Job</th>
+        <th scope="col">Last run</th>
+        <th scope="col">Last success</th>
+        <th scope="col">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <th scope="row">{{ job.label }}</th>
+        <td>{% if job.last_run_at %}{{ local_time(job.last_run_at) }}{% else %}<span class="muted">Not yet</span>{% endif %}</td>
+        <td>{% if job.last_ok_at %}{{ local_time(job.last_ok_at) }}{% else %}<span class="muted">Not yet</span>{% endif %}</td>
+        <td>{% if job.error %}<strong class="result--loss">Failed.</strong> {{ job.error }}{% elif job.last_ok_at %}<strong class="result--win">OK</strong>{% else %}<span class="muted">Waiting for the first run</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+  </section>
+
+</div>
+{% endblock %}

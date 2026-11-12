@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import Depends, Request
 
 from app.clients.osu import OsuClient
+from app.clients.wybin import WybinClient
 from app.clock import Clock
 from app.config import Settings
 from app.db.connection import open_db
@@ -40,6 +41,10 @@ def get_clock(request: Request) -> Clock:
 
 def get_osu(request: Request) -> OsuClient:
     return request.app.state.osu
+
+
+def get_wybin(request: Request) -> WybinClient:
+    return request.app.state.wybin
 
 
 async def get_db(request: Request) -> AsyncIterator[sqlite3.Connection]:
@@ -99,6 +104,11 @@ class TournamentAccess:
     @property
     def is_admin(self) -> bool:
         return self.role == Role.ADMIN
+
+    @property
+    def can_manage(self) -> bool:
+        """Captains and above may change the tournament's settings."""
+        return self.role >= Role.CAPTAIN
 
 
 async def tournament_access(

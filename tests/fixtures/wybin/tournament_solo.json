@@ -1,0 +1,101 @@
+{
+  "id": 9002,
+  "name": "Synthetic Solo Open",
+  "slug": "synthetic-solo",
+  "acronym": "SSO",
+  "gamemode": 0,
+  "soloTournament": true,
+  "soloRegistration": true,
+  "minimumTeamSize": 1,
+  "maximumTeamSize": 1,
+  "teamConfiguration": false,
+  "stages": [
+    {
+      "id": 711,
+      "name": "Qualifiers",
+      "startDate": 1795348800000,
+      "endDate": 1795435200000,
+      "bestOf": null,
+      "bans": null,
+      "protects": null,
+      "qualifierStage": true,
+      "battleRoyale": false,
+      "modBrackets": null
+    }
+  ],
+  "teams": [],
+  "players": [
+    {
+      "id": 11,
+      "pp": 4000,
+      "rank": 1011,
+      "timezone": "UTC+1",
+      "timezoneIANA": "Europe/Berlin",
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100011,
+        "slug": "adminamy",
+        "username": "AdminAmy",
+        "userOsu": {
+          "id": 1001,
+          "username": "AdminAmy",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1011,
+          "avatar_url": "https://a.ppy.sh/1001?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 12,
+      "pp": 4000,
+      "rank": 1012,
+      "timezone": "UTC-6",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100012,
+        "slug": "captaincarl",
+        "username": "CaptainCarl",
+        "userOsu": {
+          "id": 3001,
+          "username": "CaptainCarl",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1012,
+          "avatar_url": "https://a.ppy.sh/3001?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 21,
+      "pp": 4000,
+      "rank": 1021,
+      "timezone": "UTC+1",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100021,
+        "slug": "rivalrex",
+        "username": "RivalRex",
+        "userOsu": {
+          "id": 4001,
+          "username": "RivalRex",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1021,
+          "avatar_url": "https://a.ppy.sh/4001?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    }
+  ]
+}

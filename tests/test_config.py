@@ -185,3 +185,41 @@ def test_osu_api_rate_outside_1_to_60_is_rejected(valid_env, raw):
         Settings.from_env(valid_env)
 
     assert list(caught.value.invalid) == ["OSU_API_RATE_PER_MIN"]
+
+
+# --- wybin ---
+
+
+def test_wybin_settings_default_to_30_minutes_and_2_seconds(valid_env):
+    settings = Settings.from_env(valid_env)
+
+    assert settings.wybin_poll_minutes == 30
+    assert settings.wybin_min_interval_seconds == 2
+
+
+def test_wybin_settings_are_read_from_the_environment(valid_env):
+    valid_env.update({"WYBIN_POLL_MINUTES": "10", "WYBIN_MIN_INTERVAL_SECONDS": "60"})
+
+    settings = Settings.from_env(valid_env)
+
+    assert (settings.wybin_poll_minutes, settings.wybin_min_interval_seconds) == (10, 60)
+
+
+@pytest.mark.parametrize("raw", ["9", "0", "-5", "abc", "10.5"])
+def test_wybin_poll_below_10_minutes_or_not_a_number_is_rejected(valid_env, raw):
+    valid_env["WYBIN_POLL_MINUTES"] = raw
+
+    with pytest.raises(ConfigError) as caught:
+        Settings.from_env(valid_env)
+
+    assert list(caught.value.invalid) == ["WYBIN_POLL_MINUTES"]
+
+
+@pytest.mark.parametrize("raw", ["0", "61", "x", "-1"])
+def test_wybin_interval_outside_1_to_60_seconds_is_rejected(valid_env, raw):
+    valid_env["WYBIN_MIN_INTERVAL_SECONDS"] = raw
+
+    with pytest.raises(ConfigError) as caught:
+        Settings.from_env(valid_env)
+
+    assert list(caught.value.invalid) == ["WYBIN_MIN_INTERVAL_SECONDS"]

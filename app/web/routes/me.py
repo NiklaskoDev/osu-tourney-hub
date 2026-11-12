@@ -12,20 +12,14 @@ from app.domain.models import User
 from app.domain.timezones import is_valid_timezone, timezone_names
 from app.repos import users as users_repo
 from app.web.deps import get_clock, get_db, require_login
-from app.web.session import flash, seconds_since_login
+from app.web.session import flash, has_recent_login
 from app.web.templating import render
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/me")
 
-REAUTH_WINDOW_SECONDS = 5 * 60
 EXPORT_FILENAME = "osu-tourney-hub-my-data.json"
 DELETED_MESSAGE = "Your data was deleted."
-
-
-def _has_recent_login(request: Request, clock: Clock) -> bool:
-    age = seconds_since_login(request, clock.now())
-    return age is not None and 0 <= age <= REAUTH_WINDOW_SECONDS
 
 
 def _page(
@@ -35,7 +29,7 @@ def _page(
         "me": user,
         "timezone_options": [("", "Choose your timezone"), *[(n, n) for n in timezone_names()]],
         "timezone_error": timezone_error,
-        "recent_login": _has_recent_login(request, clock),
+        "recent_login": has_recent_login(request, clock.now()),
         **extra,
     }
     return render(
@@ -107,7 +101,7 @@ async def delete_my_data(
 ) -> Response:
     """Deletion needs a completed osu! login in the last five minutes, else the user is sent
     through login again and returns to the profile page."""
-    if not _has_recent_login(request, clock):
+    if not has_recent_login(request, clock.now()):
         return RedirectResponse("/auth/login?next=/me", status_code=303)
     users_repo.delete(db, user.osu_id)
     request.session.clear()

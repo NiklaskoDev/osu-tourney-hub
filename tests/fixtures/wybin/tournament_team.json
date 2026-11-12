@@ -1,0 +1,663 @@
+{
+  "id": 9001,
+  "name": "Synthetic Catch Cup",
+  "slug": "synthetic-cup",
+  "acronym": "SCC",
+  "gamemode": 2,
+  "soloTournament": false,
+  "soloRegistration": true,
+  "minimumTeamSize": 3,
+  "maximumTeamSize": 6,
+  "teamConfiguration": true,
+  "stages": [
+    {
+      "id": 702,
+      "name": "Round of 16",
+      "startDate": 1796472000000,
+      "endDate": 1796558400000,
+      "bestOf": 9,
+      "bans": 1,
+      "protects": null,
+      "qualifierStage": false,
+      "battleRoyale": false,
+      "modBrackets": null
+    },
+    {
+      "id": 701,
+      "name": "Qualifiers",
+      "startDate": 1795176000000,
+      "endDate": 1795262400000,
+      "bestOf": null,
+      "bans": null,
+      "protects": null,
+      "qualifierStage": true,
+      "battleRoyale": false,
+      "modBrackets": null
+    },
+    {
+      "id": 703,
+      "name": "Finals",
+      "startDate": 1797681600000,
+      "endDate": 1797768000000,
+      "bestOf": 13,
+      "bans": 2,
+      "protects": 1,
+      "qualifierStage": false,
+      "battleRoyale": false,
+      "modBrackets": null
+    }
+  ],
+  "teams": [
+    {
+      "id": 801,
+      "name": "Alpha Squad",
+      "acronym": "ALP",
+      "flagAcronym": "DE",
+      "qualifierSeed": 3,
+      "timezones": "+1 +1",
+      "pendingInvites": [],
+      "teamMembers": [
+        {
+          "id": 11,
+          "pp": 4000,
+          "rank": 1011,
+          "timezone": "UTC+1",
+          "timezoneIANA": "Europe/Berlin",
+          "temporaryTeamCaptain": false,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100011,
+            "slug": "adminamy",
+            "username": "AdminAmy",
+            "userOsu": {
+              "id": 1001,
+              "username": "AdminAmy",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1011,
+              "avatar_url": "https://a.ppy.sh/1001?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        },
+        {
+          "id": 12,
+          "pp": 4000,
+          "rank": 1012,
+          "timezone": "UTC-6",
+          "timezoneIANA": null,
+          "temporaryTeamCaptain": false,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100012,
+            "slug": "captaincarl",
+            "username": "CaptainCarl",
+            "userOsu": {
+              "id": 3001,
+              "username": "CaptainCarl",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1012,
+              "avatar_url": "https://a.ppy.sh/3001?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        },
+        {
+          "id": 13,
+          "pp": 4000,
+          "rank": 1013,
+          "timezone": "UTC+5:30",
+          "timezoneIANA": null,
+          "temporaryTeamCaptain": false,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100013,
+            "slug": "playerpia",
+            "username": "PlayerPia",
+            "userOsu": {
+              "id": 3002,
+              "username": "PlayerPia",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1013,
+              "avatar_url": "https://a.ppy.sh/3002?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        },
+        {
+          "id": 14,
+          "pp": 4000,
+          "rank": 1014,
+          "timezone": "UTC+1",
+          "timezoneIANA": null,
+          "temporaryTeamCaptain": true,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100014,
+            "slug": "playerpaul",
+            "username": "PlayerPaul",
+            "userOsu": {
+              "id": 3003,
+              "username": "PlayerPaul",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1014,
+              "avatar_url": "https://a.ppy.sh/3003?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        }
+      ],
+      "creator": {
+        "id": 12,
+        "pp": 4000,
+        "rank": 1012,
+        "timezone": "UTC-6",
+        "timezoneIANA": null,
+        "temporaryTeamCaptain": false,
+        "qualifierSeed": null,
+        "user": {
+          "id": 100012,
+          "slug": "captaincarl",
+          "username": "CaptainCarl",
+          "userOsu": {
+            "id": 3001,
+            "username": "CaptainCarl",
+            "flag": "DE",
+            "pp": 4000,
+            "rank": 1012,
+            "avatar_url": "https://a.ppy.sh/3001?1",
+            "badges": []
+          },
+          "timezone": null
+        }
+      }
+    },
+    {
+      "id": 802,
+      "name": "Rival Crew",
+      "acronym": "RIV",
+      "flagAcronym": "DE",
+      "qualifierSeed": 1,
+      "timezones": "+1 +1",
+      "pendingInvites": [],
+      "teamMembers": [
+        {
+          "id": 21,
+          "pp": 4000,
+          "rank": 1021,
+          "timezone": "UTC+1",
+          "timezoneIANA": null,
+          "temporaryTeamCaptain": false,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100021,
+            "slug": "rivalrex",
+            "username": "RivalRex",
+            "userOsu": {
+              "id": 4001,
+              "username": "RivalRex",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1021,
+              "avatar_url": "https://a.ppy.sh/4001?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        },
+        {
+          "id": 22,
+          "pp": 4000,
+          "rank": 1022,
+          "timezone": "UTC+1",
+          "timezoneIANA": null,
+          "temporaryTeamCaptain": false,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100022,
+            "slug": "rivalria",
+            "username": "RivalRia",
+            "userOsu": {
+              "id": 4002,
+              "username": "RivalRia",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1022,
+              "avatar_url": "https://a.ppy.sh/4002?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        },
+        {
+          "id": 23,
+          "pp": 4000,
+          "rank": 1023,
+          "timezone": "UTC+1",
+          "timezoneIANA": null,
+          "temporaryTeamCaptain": false,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100023,
+            "slug": "rivalrob",
+            "username": "RivalRob",
+            "userOsu": {
+              "id": 4003,
+              "username": "RivalRob",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1023,
+              "avatar_url": "https://a.ppy.sh/4003?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        }
+      ],
+      "creator": {
+        "id": 21,
+        "pp": 4000,
+        "rank": 1021,
+        "timezone": "UTC+1",
+        "timezoneIANA": null,
+        "temporaryTeamCaptain": false,
+        "qualifierSeed": null,
+        "user": {
+          "id": 100021,
+          "slug": "rivalrex",
+          "username": "RivalRex",
+          "userOsu": {
+            "id": 4001,
+            "username": "RivalRex",
+            "flag": "DE",
+            "pp": 4000,
+            "rank": 1021,
+            "avatar_url": "https://a.ppy.sh/4001?1",
+            "badges": []
+          },
+          "timezone": null
+        }
+      }
+    },
+    {
+      "id": 803,
+      "name": "Third Wheel",
+      "acronym": "TRD",
+      "flagAcronym": "DE",
+      "qualifierSeed": null,
+      "timezones": "+1 +1",
+      "pendingInvites": [],
+      "teamMembers": [
+        {
+          "id": 31,
+          "pp": 4000,
+          "rank": 1031,
+          "timezone": "UTC+1",
+          "timezoneIANA": null,
+          "temporaryTeamCaptain": false,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100031,
+            "slug": "thirdtom",
+            "username": "ThirdTom",
+            "userOsu": {
+              "id": 5001,
+              "username": "ThirdTom",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1031,
+              "avatar_url": "https://a.ppy.sh/5001?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        },
+        {
+          "id": 32,
+          "pp": 4000,
+          "rank": 1032,
+          "timezone": "UTC+1",
+          "timezoneIANA": null,
+          "temporaryTeamCaptain": false,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100032,
+            "slug": "thirdtia",
+            "username": "ThirdTia",
+            "userOsu": {
+              "id": 5002,
+              "username": "ThirdTia",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1032,
+              "avatar_url": "https://a.ppy.sh/5002?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        },
+        {
+          "id": 33,
+          "pp": 4000,
+          "rank": 1033,
+          "timezone": "UTC+1",
+          "timezoneIANA": null,
+          "temporaryTeamCaptain": false,
+          "qualifierSeed": null,
+          "user": {
+            "id": 100033,
+            "slug": "thirdtim",
+            "username": "ThirdTim",
+            "userOsu": {
+              "id": 5003,
+              "username": "ThirdTim",
+              "flag": "DE",
+              "pp": 4000,
+              "rank": 1033,
+              "avatar_url": "https://a.ppy.sh/5003?1",
+              "badges": []
+            },
+            "timezone": null
+          }
+        }
+      ],
+      "creator": {
+        "id": 32,
+        "pp": 4000,
+        "rank": 1032,
+        "timezone": "UTC+1",
+        "timezoneIANA": null,
+        "temporaryTeamCaptain": false,
+        "qualifierSeed": null,
+        "user": {
+          "id": 100032,
+          "slug": "thirdtia",
+          "username": "ThirdTia",
+          "userOsu": {
+            "id": 5002,
+            "username": "ThirdTia",
+            "flag": "DE",
+            "pp": 4000,
+            "rank": 1032,
+            "avatar_url": "https://a.ppy.sh/5002?1",
+            "badges": []
+          },
+          "timezone": null
+        }
+      }
+    }
+  ],
+  "players": [
+    {
+      "id": 11,
+      "pp": 4000,
+      "rank": 1011,
+      "timezone": "UTC+1",
+      "timezoneIANA": "Europe/Berlin",
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100011,
+        "slug": "adminamy",
+        "username": "AdminAmy",
+        "userOsu": {
+          "id": 1001,
+          "username": "AdminAmy",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1011,
+          "avatar_url": "https://a.ppy.sh/1001?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 12,
+      "pp": 4000,
+      "rank": 1012,
+      "timezone": "UTC-6",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100012,
+        "slug": "captaincarl",
+        "username": "CaptainCarl",
+        "userOsu": {
+          "id": 3001,
+          "username": "CaptainCarl",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1012,
+          "avatar_url": "https://a.ppy.sh/3001?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 13,
+      "pp": 4000,
+      "rank": 1013,
+      "timezone": "UTC+5:30",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100013,
+        "slug": "playerpia",
+        "username": "PlayerPia",
+        "userOsu": {
+          "id": 3002,
+          "username": "PlayerPia",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1013,
+          "avatar_url": "https://a.ppy.sh/3002?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 14,
+      "pp": 4000,
+      "rank": 1014,
+      "timezone": "UTC+1",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": true,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100014,
+        "slug": "playerpaul",
+        "username": "PlayerPaul",
+        "userOsu": {
+          "id": 3003,
+          "username": "PlayerPaul",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1014,
+          "avatar_url": "https://a.ppy.sh/3003?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 21,
+      "pp": 4000,
+      "rank": 1021,
+      "timezone": "UTC+1",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100021,
+        "slug": "rivalrex",
+        "username": "RivalRex",
+        "userOsu": {
+          "id": 4001,
+          "username": "RivalRex",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1021,
+          "avatar_url": "https://a.ppy.sh/4001?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 22,
+      "pp": 4000,
+      "rank": 1022,
+      "timezone": "UTC+1",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100022,
+        "slug": "rivalria",
+        "username": "RivalRia",
+        "userOsu": {
+          "id": 4002,
+          "username": "RivalRia",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1022,
+          "avatar_url": "https://a.ppy.sh/4002?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 23,
+      "pp": 4000,
+      "rank": 1023,
+      "timezone": "UTC+1",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100023,
+        "slug": "rivalrob",
+        "username": "RivalRob",
+        "userOsu": {
+          "id": 4003,
+          "username": "RivalRob",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1023,
+          "avatar_url": "https://a.ppy.sh/4003?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 31,
+      "pp": 4000,
+      "rank": 1031,
+      "timezone": "UTC+1",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100031,
+        "slug": "thirdtom",
+        "username": "ThirdTom",
+        "userOsu": {
+          "id": 5001,
+          "username": "ThirdTom",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1031,
+          "avatar_url": "https://a.ppy.sh/5001?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 32,
+      "pp": 4000,
+      "rank": 1032,
+      "timezone": "UTC+1",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100032,
+        "slug": "thirdtia",
+        "username": "ThirdTia",
+        "userOsu": {
+          "id": 5002,
+          "username": "ThirdTia",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1032,
+          "avatar_url": "https://a.ppy.sh/5002?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 33,
+      "pp": 4000,
+      "rank": 1033,
+      "timezone": "UTC+1",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100033,
+        "slug": "thirdtim",
+        "username": "ThirdTim",
+        "userOsu": {
+          "id": 5003,
+          "username": "ThirdTim",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1033,
+          "avatar_url": "https://a.ppy.sh/5003?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    },
+    {
+      "id": 41,
+      "pp": 4000,
+      "rank": 1041,
+      "timezone": "UTC+1",
+      "timezoneIANA": null,
+      "temporaryTeamCaptain": false,
+      "qualifierSeed": null,
+      "user": {
+        "id": 100041,
+        "slug": "lonelou",
+        "username": "LoneLou",
+        "userOsu": {
+          "id": 6001,
+          "username": "LoneLou",
+          "flag": "DE",
+          "pp": 4000,
+          "rank": 1041,
+          "avatar_url": "https://a.ppy.sh/6001?1",
+          "badges": []
+        },
+        "timezone": null
+      }
+    }
+  ]
+}

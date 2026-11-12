@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from app import __version__
 from app.db.connection import open_db
 from app.domain.models import User
+from app.domain.modes import display_mods
 from app.web.deps import is_admin, load_session_user
 from app.web.session import csrf_token, pop_flashes
 
@@ -18,6 +19,7 @@ TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 templates.env.globals["app_version"] = __version__
+templates.env.filters["mods"] = display_mods
 
 
 def render(

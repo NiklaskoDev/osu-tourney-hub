@@ -16,7 +16,16 @@ def seeded(db) -> int:
 
 
 def page_paths(tournament_id: int) -> list[str]:
-    return ["/", "/me", f"/t/{tournament_id}", f"/t/{tournament_id}/members", "/styleguide"]
+    return [
+        "/",
+        "/me",
+        f"/t/{tournament_id}",
+        f"/t/{tournament_id}/members",
+        f"/t/{tournament_id}/settings",
+        "/admin",
+        f"/admin/tournaments/{tournament_id}",
+        "/styleguide",
+    ]
 
 
 def test_every_page_is_compatible_with_the_csp(client, login, seeded):
@@ -43,7 +52,7 @@ def test_headings_start_with_one_h1(client, login, seeded):
 def test_every_form_control_has_a_label(client, login, seeded):
     login(2001)
 
-    for path in ("/me", f"/t/{seeded}/members"):
+    for path in ("/me", f"/t/{seeded}/members", f"/t/{seeded}/settings"):
         html = client.get(path).text
         for control in re.findall(r"<(?:input|select|textarea)\b[^>]*>", html):
             if 'type="hidden"' in control:
@@ -100,7 +109,41 @@ def test_pages_escape_names_from_osu(client, login, db, seeded):
 
 
 def test_the_login_screen_is_the_only_page_a_visitor_can_open(client, seeded):
-    for path in ("/me", "/me/export", f"/t/{seeded}", f"/t/{seeded}/members", "/styleguide"):
+    paths = (
+        "/me",
+        "/me/export",
+        f"/t/{seeded}",
+        f"/t/{seeded}/members",
+        f"/t/{seeded}/settings",
+        "/admin",
+        f"/admin/tournaments/{seeded}",
+        "/styleguide",
+    )
+    for path in paths:
         response = client.get(path, follow_redirects=False)
         assert response.status_code == 303, path
         assert response.headers["location"].startswith("/auth/login?next="), path
+
+
+def test_every_admin_form_control_has_a_label(client, login, db, seeded):
+    db.execute(
+        "INSERT INTO stages (tournament_id, name, sort_order, is_qualifier) "
+        "VALUES (?, 'Cup', 1, 0)",
+        (seeded,),
+    )
+    login(ADMIN_ID)
+
+    for path in ("/admin", f"/admin/tournaments/{seeded}"):
+        html = client.get(path).text
+        controls = [
+            control
+            for control in re.findall(r"<(?:input|select|textarea)\b[^>]*>", html)
+            if 'type="hidden"' not in control
+        ]
+        assert controls, path
+        for control in controls:
+            control_id = re.search(r'\bid="([^"]+)"', control)
+            assert control_id, control
+            assert f'for="{control_id.group(1)}"' in html, (path, control)
+        ids = re.findall(r'\bid="([^"]+)"', html)
+        assert len(ids) == len(set(ids)), f"duplicate ids on {path}"

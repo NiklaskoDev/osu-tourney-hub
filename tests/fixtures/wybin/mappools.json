@@ -1,0 +1,242 @@
+{
+  "id": 9001,
+  "stages": [
+    {
+      "id": 701,
+      "name": "Qualifiers",
+      "modBrackets": [
+        {
+          "id": 1,
+          "name": "NoMod",
+          "mods": "None",
+          "beatmaps": [
+            {
+              "id": 1,
+              "name": "Synth Artist - Second Song [Insane]",
+              "beatmapOrder": 2,
+              "customMap": null,
+              "placeholder": false,
+              "creator": "MapperMia",
+              "gamemodeId": 2,
+              "beatmapId": 910002,
+              "beatmapsetId": 911002,
+              "totalLength": 180,
+              "bpm": 180.0,
+              "circleSize": 4.0,
+              "hpDrain": 5.0,
+              "overallDifficulty": 9.0,
+              "approachRate": 9.0,
+              "starRating": 6.5,
+              "mods": 0
+            },
+            {
+              "id": 2,
+              "name": "Synth Artist - First Song [Rain]",
+              "beatmapOrder": 1,
+              "customMap": null,
+              "placeholder": false,
+              "creator": "MapperMia",
+              "gamemodeId": 2,
+              "beatmapId": 910001,
+              "beatmapsetId": 911001,
+              "totalLength": 180,
+              "bpm": 180.0,
+              "circleSize": 4.0,
+              "hpDrain": 5.0,
+              "overallDifficulty": 9.0,
+              "approachRate": 9.0,
+              "starRating": 6.5,
+              "mods": 0
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "Hidden",
+          "mods": "Hidden",
+          "beatmaps": [
+            {
+              "id": 3,
+              "name": "Band - Hidden Two [Expert]",
+              "beatmapOrder": 2,
+              "customMap": null,
+              "placeholder": false,
+              "creator": "MapperMia",
+              "gamemodeId": 2,
+              "beatmapId": 910004,
+              "beatmapsetId": 911004,
+              "totalLength": 180,
+              "bpm": 180.0,
+              "circleSize": 4.0,
+              "hpDrain": 5.0,
+              "overallDifficulty": 9.0,
+              "approachRate": 9.0,
+              "starRating": 6.5,
+              "mods": 8
+            },
+            {
+              "id": 4,
+              "name": "Band - Hidden One [Expert]",
+              "beatmapOrder": 1,
+              "customMap": null,
+              "placeholder": false,
+              "creator": "MapperMia",
+              "gamemodeId": 2,
+              "beatmapId": 910003,
+              "beatmapsetId": 911003,
+              "totalLength": 180,
+              "bpm": 180.0,
+              "circleSize": 4.0,
+              "hpDrain": 5.0,
+              "overallDifficulty": 9.0,
+              "approachRate": 9.0,
+              "starRating": 6.5,
+              "mods": 8
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "name": "HardRock",
+          "mods": "HardRock",
+          "beatmaps": [
+            {
+              "id": 5,
+              "name": "Solo - Rocky [Hard]",
+              "beatmapOrder": 1,
+              "customMap": null,
+              "placeholder": false,
+              "creator": "MapperMia",
+              "gamemodeId": 2,
+              "beatmapId": 910005,
+              "beatmapsetId": 911005,
+              "totalLength": 180,
+              "bpm": 180.0,
+              "circleSize": 4.0,
+              "hpDrain": 5.0,
+              "overallDifficulty": 9.0,
+              "approachRate": 9.0,
+              "starRating": 6.5,
+              "mods": 16
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "name": "DoubleTime",
+          "mods": "DoubleTime",
+          "beatmaps": [
+            {
+              "id": 6,
+              "name": "Duo - Fast Lane [Cup]",
+              "beatmapOrder": 1,
+              "customMap": null,
+              "placeholder": false,
+              "creator": "MapperMia",
+              "gamemodeId": 2,
+              "beatmapId": 910006,
+              "beatmapsetId": 911006,
+              "totalLength": 180,
+              "bpm": 180.0,
+              "circleSize": 4.0,
+              "hpDrain": 5.0,
+              "overallDifficulty": 9.0,
+              "approachRate": 9.0,
+              "starRating": 6.5,
+              "mods": 64
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "name": "MixedMod",
+          "mods": "MixedMod",
+          "beatmaps": [
+            {
+              "id": 7,
+              "name": "Trio - Mixed Up [Salad]",
+              "beatmapOrder": 1,
+              "customMap": null,
+              "placeholder": false,
+              "creator": "MapperMia",
+              "gamemodeId": 2,
+              "beatmapId": 910007,
+              "beatmapsetId": 911007,
+              "totalLength": 180,
+              "bpm": 180.0,
+              "circleSize": 4.0,
+              "hpDrain": 5.0,
+              "overallDifficulty": 9.0,
+              "approachRate": 9.0,
+              "starRating": 6.5,
+              "mods": 0
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "name": "Tiebreaker",
+          "mods": "Tiebreaker",
+          "beatmaps": [
+            {
+              "id": 8,
+              "name": "Final - Decider [Last]",
+              "beatmapOrder": 1,
+              "customMap": null,
+              "placeholder": false,
+              "creator": "MapperMia",
+              "gamemodeId": 2,
+              "beatmapId": 910008,
+              "beatmapsetId": 911008,
+              "totalLength": 180,
+              "bpm": 180.0,
+              "circleSize": 4.0,
+              "hpDrain": 5.0,
+              "overallDifficulty": 9.0,
+              "approachRate": 9.0,
+              "starRating": 6.5,
+              "mods": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 702,
+      "name": "Round of 16",
+      "modBrackets": [
+        {
+          "id": 7,
+          "name": "NoMod",
+          "mods": "None",
+          "beatmaps": [
+            {
+              "id": 9,
+              "name": "TBD",
+              "beatmapOrder": 1,
+              "customMap": null,
+              "placeholder": true,
+              "creator": "MapperMia",
+              "gamemodeId": 2,
+              "beatmapId": null,
+              "beatmapsetId": null,
+              "totalLength": 180,
+              "bpm": 180.0,
+              "circleSize": 4.0,
+              "hpDrain": 5.0,
+              "overallDifficulty": 9.0,
+              "approachRate": 9.0,
+              "starRating": 6.5,
+              "mods": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 703,
+      "name": "Finals",
+      "modBrackets": null
+    }
+  ]
+}

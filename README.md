@@ -5,8 +5,9 @@ Unraid). Log in with osu!, import tournaments from wybin, keep a mappool sheet w
 suggestions, availability, an MP lobby skimmer and matchup predictions.
 
 Status: early development. The container, configuration, database migrations, `/healthz`, login
-with osu!, tournament roles and member management, and an admin-only design `/styleguide` exist; the
-other features arrive phase by phase (see `docs/plans/`).
+with osu!, tournament roles and member management, tournaments (imported from wybin or entered by
+hand) with stages, map pools and teams, and an admin-only design `/styleguide` exist; the other
+features arrive phase by phase (see `docs/plans/`).
 
 ## Set up the osu! OAuth application
 
@@ -78,6 +79,22 @@ tournament there are four roles: captain and co-captain (can manage members), pl
 user id on the Members page. Each person can download or delete their data on the Profile page.
 A session ends 14 days after the last visit; "Log out everywhere" on the Profile page ends all of them.
 
+## Tournaments
+
+Administrators use the Admin page. "Import from wybin" takes a tournament address or slug (for
+example `https://wybin.xyz/4cwc25/home`) and copies its stages, map pool, teams and players. The
+players of your team (the team that holds the importing admin) become members; captains on wybin
+become captains in the app, and later syncs only add people. Active wybin tournaments are refreshed
+every `WYBIN_POLL_MINUTES`. Link your wybin account to have the tournaments you sign up for
+imported automatically (checked every six hours; tournaments that ended more than 30 days ago
+arrive archived). Tournaments that are not on wybin can be created by hand, with stages and maps
+(title and difficulty come from osu!). Archive a tournament to make it read-only; hide it to remove
+it from everyone but administrators.
+
+The app reads wybin anonymously and only reads: at most one request every `WYBIN_MIN_INTERVAL_SECONDS`
+seconds, and nothing is ever written back. wybin has no published API terms, so its response
+format may change; the Admin page then shows a failed job and keeps the stored data.
+
 ## Configuration
 
 All settings are environment variables. `.env.example` lists them with comments.
@@ -92,6 +109,7 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `PUID` / `PGID` | 99 / 100 | user and group the container writes files as |
 | `OSU_API_RATE_PER_MIN` | 60 | overall osu! API budget, hard cap 60 |
 | `WYBIN_POLL_MINUTES` | 30 | minutes between wybin syncs, minimum 10 |
+| `WYBIN_MIN_INTERVAL_SECONDS` | 2 | pause between two requests to wybin, 1 to 60 |
 | `SCANNER_ENABLED` | true | scan new multiplayer lobbies |
 | `SCANNER_BUDGET_PER_MIN` | 30 | osu! requests per minute for the scanner, lower than `OSU_API_RATE_PER_MIN` |
 | `SCANNER_WORKERS` | 4 | parallel scanner tasks, 1 to 8 |
@@ -106,10 +124,10 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `LOG_LEVEL` | info | debug, info, warning, error, critical |
 | `DATA_DIR` | `/data` | set by the image; change only outside Docker |
 
-Read by this version: the five required variables, `OSU_API_RATE_PER_MIN`, `LOG_LEVEL`, `DATA_DIR`
-(and `PUID`/`PGID` by the container start-up script). The variables from `WYBIN_POLL_MINUTES` down to
-`AI_BASE_URL` are not read yet; they only take effect in the versions that add the matching feature,
-and setting them now changes nothing.
+Read by this version: the five required variables, `OSU_API_RATE_PER_MIN`, `WYBIN_POLL_MINUTES`,
+`WYBIN_MIN_INTERVAL_SECONDS`, `LOG_LEVEL`, `DATA_DIR` (and `PUID`/`PGID` by the container start-up
+script). The variables from `SCANNER_ENABLED` down to `AI_BASE_URL` are not read yet; they only take
+effect in the versions that add the matching feature, and setting them now changes nothing.
 
 ## Local development
 

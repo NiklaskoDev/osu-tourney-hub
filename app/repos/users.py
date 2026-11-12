@@ -35,6 +35,13 @@ def record_profile(conn: sqlite3.Connection, profile: OsuProfile, now: str) -> U
     return _require(conn, profile.osu_id)
 
 
+def record_if_unknown(conn: sqlite3.Connection, profile: OsuProfile, now: str) -> None:
+    """Remember someone seen on a wybin roster so pages can show their name, but never overwrite
+    the profile of a person who already logged in."""
+    if get(conn, profile.osu_id) is None:
+        _upsert(conn, profile, now, last_login_at=None)
+
+
 def set_timezone(conn: sqlite3.Connection, osu_id: int, timezone: str | None) -> None:
     conn.execute("UPDATE users SET timezone = ? WHERE osu_id = ?", (timezone, osu_id))
 

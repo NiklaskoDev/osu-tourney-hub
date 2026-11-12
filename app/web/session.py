@@ -17,6 +17,7 @@ NEXT_KEY = "next"
 FLASH_KEY = "flash"
 MAX_AGE_SECONDS = 14 * 24 * 3600
 MAX_FLASHES = 3
+REAUTH_WINDOW_SECONDS = 5 * 60
 FlashKind = Literal["success", "error", "info"]
 
 
@@ -39,6 +40,12 @@ def seconds_since_login(request: Request, now: datetime) -> float | None:
     if not isinstance(auth_at, int):
         return None
     return now.timestamp() - auth_at
+
+
+def has_recent_login(request: Request, now: datetime) -> bool:
+    """Sensitive actions (deleting data or a tournament) need a login from the last 5 minutes."""
+    age = seconds_since_login(request, now)
+    return age is not None and 0 <= age <= REAUTH_WINDOW_SECONDS
 
 
 def csrf_token(request: Request) -> str:

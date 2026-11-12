@@ -15,6 +15,15 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - Profile page: timezone, download my data, delete my data (needs a login from the last five minutes), log out everywhere.
 - Database tables for tournaments, rosters, teams, stages and pool maps (migration 0002).
 - `OSU_API_RATE_PER_MIN` is now used: all osu! API calls share one rate limit, retry on errors and back off.
+- Admin page: import a tournament from wybin by address or slug (stages, map pool with NM/HD/HR/DT/FM/TB slots, teams, players; the players of your team become members), sync it on demand, archive, restore, hide or delete it (delete needs a recent login and the acronym typed).
+- Tournaments that are not on wybin can be created by hand, with stages and a map pool whose title, difficulty and length are looked up on osu!.
+- Link your wybin account on the Admin page: tournaments you sign up for are imported automatically (checked every six hours; ones that ended over 30 days ago arrive archived; a hidden tournament is never imported again).
+- Active wybin tournaments are updated every `WYBIN_POLL_MINUTES`; a failed sync keeps the stored data and shows a generic error on the Admin page. New setting `WYBIN_MIN_INTERVAL_SECONDS` spaces the requests to wybin.
+- Tournament overview shows game mode, team format, our team, stages with their format and whether the pool is published. New Settings page for captains: scoring type, freemod rule and lineup size per stage; administrators also set our team and the final placing.
+- Game modes: mod tables per mode (osu!, taiko, catch, mania incl. key mods) for required mods on map slots.
+- Not in this version: importing matches and schedules from wybin. It arrives with the match schedule in a later phase (the tables for it do not exist yet).
+- An archived tournament is never rewritten by an import or sync, a deleted wybin tournament is not imported again automatically (an admin can still import it by hand), and a re-synced map pool keeps each map's row when wybin reorders it.
+- A failed or partial wybin job, including an unreadable map pool endpoint, shows on the Admin page with how many tournaments it affected.
 
 ### Changed
 - `/styleguide` is now for administrators only; the `STYLEGUIDE_PREVIEW` setting is removed.

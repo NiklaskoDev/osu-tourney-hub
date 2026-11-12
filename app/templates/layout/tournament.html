@@ -5,6 +5,7 @@
   ("overview", "Overview", "/t/" ~ tournament.id),
   ("members", "Members", "/t/" ~ tournament.id ~ "/members"),
 ] %}
+{% if access.can_manage %}{% set items = items + [("settings", "Settings", "/t/" ~ tournament.id ~ "/settings")] %}{% endif %}
 {% block content %}
 <div class="tournament-layout">
   <nav class="side-nav" aria-label="{{ tournament.name }}">

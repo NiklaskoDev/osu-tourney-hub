@@ -1,0 +1,78 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/button.html" import button %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% block title %}Settings - {{ tournament.name }} - {% endblock %}
+{% block tournament_content %}
+{% set vals = form_values|default({}) %}
+{% set ff = form_error_field|default(none) %}
+<div class="page__header">
+  <h1>Settings</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}Settings are read-only. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+{% if form_error and (not ff or (ff == "our_team" and not team_options)) %}
+{% call alert("error", "Settings not saved") %}{{ form_error }}{% endcall %}
+{% endif %}
+
+<form class="stack sections" method="post" action="/t/{{ tournament.id }}/settings">
+  {{ csrf_field(csrf_token) }}
+
+  <section class="stack" aria-labelledby="rules-heading">
+    <h2 id="rules-heading">Rules</h2>
+    <p class="muted">Game mode: {{ mode }}. The scoring type decides which scores count towards averages.</p>
+    {{ field("scoring", "Scoring", options=scoring_options, value=vals.scoring|default(tournament.scoring), required=true, disabled=archived, error=form_error if ff == "scoring" else none) }}
+    {{ field("freemod_rule", "Freemod rule", options=freemod_options, value=vals.freemod_rule|default(tournament.freemod_rule), required=true, disabled=archived, error=form_error if ff == "freemod_rule" else none, hint="Used when lineups are suggested for freemod maps.") }}
+  </section>
+
+  <section class="stack" aria-labelledby="lineup-heading">
+    <h2 id="lineup-heading">Lineup size per stage</h2>
+    {% if tournament.is_solo %}
+    <p class="muted">Every map is played by one player in a solo tournament.</p>
+    {% elif stage_rows %}
+    <p class="muted">How many players play each map. Left empty it is {{ tournament.team_size_min or 1 }}{% if tournament.team_size_min %}, the smallest team size{% endif %}.</p>
+    {% call table("Lineup size per stage") %}
+    <thead>
+      <tr>
+        <th scope="col">Stage</th>
+        <th scope="col">Format</th>
+        <th scope="col">Players per map</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in stage_rows %}
+      {% set key = "lineup_size_" ~ row.stage.id %}
+      <tr>
+        <th scope="row">{{ row.stage.name }}</th>
+        <td>{{ row.stage.format_text or "Not set" }}</td>
+        <td>{{ field(key, "Players per map in " ~ row.stage.name, value=vals[key]|default(row.lineup_size if row.lineup_set else ""), placeholder=row.lineup_size, label_hidden=true, disabled=archived, inputmode="numeric", error=form_error if ff == key else none) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    {% else %}
+    {{ empty_state("This tournament has no stages yet.") }}
+    {% endif %}
+  </section>
+
+  {% if access.is_admin %}
+  <section class="stack" aria-labelledby="admin-heading">
+    <h2 id="admin-heading">Administrator settings</h2>
+    {% if team_options %}
+    {{ field("our_team", "Our team" if not tournament.is_solo else "Your entry", options=([("", "Not set")] + team_options) if not our_team_value else team_options, value=vals.our_team|default(our_team_value), disabled=archived, error=form_error if ff == "our_team" else none, hint="Every player of this team becomes a member. People already on the roster stay.") }}
+    {% else %}
+    <p class="muted">Teams appear here after the first wybin sync.</p>
+    {% endif %}
+    {{ field("final_placing", "Final placing", value=vals.final_placing|default(tournament.final_placing or ""), disabled=archived, maxlength="60", error=form_error if ff == "final_placing" else none, hint="For example Top 8. Shown on the overview.") }}
+  </section>
+  {% endif %}
+
+  <div>{{ button("Save settings", variant="primary", type="submit", disabled=archived) }}</div>
+</form>
+{% endblock %}

@@ -41,10 +41,121 @@ TOURNAMENT_STATUSES = ("active", "archived", "hidden")
 
 @dataclass(frozen=True)
 class Tournament:
+    """A tournament row. Pages that only list tournaments leave the later fields at defaults."""
+
     id: int
     name: str
     acronym: str | None
     status: str
+    gamemode: int = 0
+    is_solo: bool = False
+    team_size_min: int | None = None
+    team_size_max: int | None = None
+    freemod_rule: str = "none"
+    scoring: str = "v2"
+    owner_osu_id: int | None = None
+    source: str | None = None
+    wybin_id: int | None = None
+    slug: str | None = None
+    final_placing: str | None = None
+    our_team_id: int | None = None
+    last_synced_at: str | None = None
+
+
+FREEMOD_RULES = ("none", "each_player_mod", "two_distinct_mods")
+SCORING_MODES = ("v2", "v1", "lazer")
+
+
+@dataclass(frozen=True)
+class Stage:
+    id: int
+    tournament_id: int
+    wybin_stage_id: int | None
+    name: str
+    sort_order: int
+    start_at: str | None
+    end_at: str | None
+    best_of: int | None
+    bans: int | None
+    protects: int | None
+    is_qualifier: bool
+    lineup_size: int | None
+    pool_released: bool
+
+    @property
+    def format_text(self) -> str:
+        """ "Best of 9, 1 ban, 2 protects" from whatever the stage defines."""
+        parts = []
+        if self.best_of:
+            parts.append(f"Best of {self.best_of}")
+        for count, noun in ((self.bans, "ban"), (self.protects, "protect")):
+            if count:
+                parts.append(f"{count} {noun}{'s' if count != 1 else ''}")
+        return ", ".join(parts)
+
+
+@dataclass(frozen=True)
+class PoolMap:
+    id: int
+    stage_id: int
+    slot: str
+    bracket: str
+    required_mods: str
+    is_freemod: bool
+    is_tiebreaker: bool
+    sort_order: int
+    beatmap_id: int | None
+    beatmapset_id: int | None
+    artist: str | None
+    title: str | None
+    version: str | None
+    mapper: str | None
+    star_rating: float | None
+    bpm: float | None
+    length_s: int | None
+    cs: float | None
+    ar: float | None
+    od: float | None
+    hp: float | None
+
+
+@dataclass(frozen=True)
+class BeatmapMeta:
+    """Public metadata of one beatmap, as osu! reports it."""
+
+    beatmap_id: int
+    beatmapset_id: int | None
+    artist: str | None
+    title: str | None
+    version: str | None
+    mapper: str | None
+    star_rating: float | None
+    bpm: float | None
+    length_s: int | None
+    cs: float | None
+    ar: float | None
+    od: float | None
+    hp: float | None
+
+
+@dataclass(frozen=True)
+class Team:
+    id: int
+    tournament_id: int
+    wybin_team_id: int | None
+    name: str
+    is_ours: bool
+    seed: int | None
+
+
+@dataclass(frozen=True)
+class TeamPlayer:
+    team_id: int
+    osu_id: int
+    username: str
+    timezone_iana: str | None
+    timezone_offset_min: int | None
+    is_captain: bool
 
 
 @dataclass(frozen=True)

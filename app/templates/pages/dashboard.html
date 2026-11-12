@@ -1,12 +1,13 @@
 {% extends "layout/shell.html" %}
 {% from "components/table.html" import table %}
 {% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
 {% from "components/empty_state.html" import empty_state %}
 {% block title %}Tournaments - {% endblock %}
 {% block content %}
 <div class="page__header">
   <h1>Tournaments</h1>
-  {% if viewer_is_admin %}<p class="muted">You are an administrator, so you see every tournament.</p>{% endif %}
+  {% if viewer_is_admin %}<div class="row"><p class="muted">You are an administrator, so you see every tournament.</p>{{ button("Add tournament", variant="primary", href="/admin", icon_name="plus") }}</div>{% endif %}
 </div>
 {% if rows %}
 {% call table("Tournaments") %}
@@ -28,7 +29,7 @@
 </tbody>
 {% endcall %}
 {% elif viewer_is_admin %}
-{{ empty_state("No tournaments exist yet.") }}
+{% call empty_state("No tournaments exist yet.") %}{{ button("Add a tournament", variant="primary", href="/admin", icon_name="plus") }}{% endcall %}
 {% else %}
 {{ empty_state("You are not on a tournament roster yet. A captain or an administrator adds you when your team's tournament is set up.") }}
 {% endif %}

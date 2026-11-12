@@ -22,6 +22,10 @@ DEFAULT_LOG_LEVEL = "info"
 LOG_LEVELS = ("debug", "info", "warning", "error", "critical")
 # osu! asks API users to stay under 60 requests per minute, so this is also the ceiling.
 MAX_OSU_API_RATE_PER_MIN = 60
+DEFAULT_WYBIN_POLL_MINUTES = 30
+MIN_WYBIN_POLL_MINUTES = 10
+DEFAULT_WYBIN_MIN_INTERVAL_SECONDS = 2
+MAX_WYBIN_MIN_INTERVAL_SECONDS = 60
 
 
 class ConfigError(Exception):
@@ -50,6 +54,8 @@ class Settings:
     data_dir: Path
     log_level: str
     osu_api_rate_per_min: int
+    wybin_poll_minutes: int = DEFAULT_WYBIN_POLL_MINUTES
+    wybin_min_interval_seconds: int = DEFAULT_WYBIN_MIN_INTERVAL_SECONDS
 
     @property
     def db_path(self) -> Path:
@@ -92,6 +98,25 @@ class Settings:
                 f"must be a number from 1 to {MAX_OSU_API_RATE_PER_MIN}"
             )
 
+        wybin_poll = _parse_int(
+            environ.get("WYBIN_POLL_MINUTES", ""),
+            DEFAULT_WYBIN_POLL_MINUTES,
+            MIN_WYBIN_POLL_MINUTES,
+        )
+        if wybin_poll is None:
+            invalid["WYBIN_POLL_MINUTES"] = f"must be a number of at least {MIN_WYBIN_POLL_MINUTES}"
+
+        wybin_interval = _parse_int(
+            environ.get("WYBIN_MIN_INTERVAL_SECONDS", ""),
+            DEFAULT_WYBIN_MIN_INTERVAL_SECONDS,
+            1,
+            MAX_WYBIN_MIN_INTERVAL_SECONDS,
+        )
+        if wybin_interval is None:
+            invalid["WYBIN_MIN_INTERVAL_SECONDS"] = (
+                f"must be a number from 1 to {MAX_WYBIN_MIN_INTERVAL_SECONDS}"
+            )
+
         if missing or invalid:
             raise ConfigError(missing, invalid)
 
@@ -104,6 +129,8 @@ class Settings:
             data_dir=Path(environ.get("DATA_DIR", "").strip() or DEFAULT_DATA_DIR),
             log_level=log_level,
             osu_api_rate_per_min=osu_api_rate,
+            wybin_poll_minutes=wybin_poll,
+            wybin_min_interval_seconds=wybin_interval,
         )
 
 
@@ -140,3 +167,17 @@ def _parse_rate(raw: str) -> int | None:
         return None
     rate = int(value)
     return rate if 1 <= rate <= MAX_OSU_API_RATE_PER_MIN else None
+
+
+def _parse_int(raw: str, default: int, minimum: int, maximum: int | None = None) -> int | None:
+    """Empty means the default; otherwise a whole number of at least `minimum` (and at most
+    `maximum` when given)."""
+    value = raw.strip()
+    if not value:
+        return default
+    if not (value.isascii() and value.isdecimal()):
+        return None
+    number = int(value)
+    if number < minimum or (maximum is not None and number > maximum):
+        return None
+    return number

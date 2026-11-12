@@ -8,7 +8,7 @@
     {% if user %}
     <nav class="topbar__nav" aria-label="Main">
       <a href="/">Tournaments</a>
-      {% if is_admin %}<a href="/styleguide">Styleguide</a>{% endif %}
+      {% if is_admin %}<a href="/admin"{% if nav_current == "admin" %} aria-current="page"{% endif %}>Admin</a><a href="/styleguide">Styleguide</a>{% endif %}
     </nav>
     <div class="topbar__user">
       {% if user.avatar_url %}<img class="avatar" src="{{ user.avatar_url }}" alt="" width="28" height="28">{% endif %}

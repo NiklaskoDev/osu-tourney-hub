@@ -1,0 +1,130 @@
+{% extends "layout/shell.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/checkbox.html" import checkbox %}
+{% from "components/countdown.html" import local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/dialog.html" import dialog %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% block title %}Stages and maps - {{ tournament.name }} - {% endblock %}
+{% block content %}
+{% set vals = form_values|default({}) %}
+{% set ff = form_error_field|default(none) %}
+{% set fn = form_name|default(none) %}
+<div class="page__header">
+  <h1>Stages and maps</h1>
+  <p class="muted"><a href="/t/{{ tournament.id }}">{{ tournament.name }}</a> ({{ mode }})</p>
+</div>
+
+{% if tournament.status == "archived" %}
+{% call alert("info", "This tournament is archived") %}Stages and maps are read-only. Restore the tournament on the <a href="/admin">admin page</a> to change them.{% endcall %}
+{% elif tournament.source == "wybin" %}
+{% call alert("info", "Imported from wybin") %}Stages and maps come from wybin and are refreshed with every sync, so they cannot be edited here.{% endcall %}
+{% endif %}
+{% if form_error and (not ff or fn in ("stage-remove", "map-remove")) %}
+{% call alert("error", "That change was not made") %}{{ form_error }}{% endcall %}
+{% endif %}
+
+<div class="stack sections">
+
+  {% for item in stages %}
+  {% set stage = item.stage %}
+  <section class="stack" aria-labelledby="stage-{{ stage.id }}">
+    <div class="row">
+      <h2 id="stage-{{ stage.id }}">{{ stage.name }}{% if stage.is_qualifier %} <span class="muted">(qualifier)</span>{% endif %}</h2>
+      {% if editable %}
+      {{ button("Remove stage", variant="text", icon_name="trash-2", data_dialog_open="remove-stage-" ~ stage.id) }}
+      {% call dialog("remove-stage-" ~ stage.id, "Remove " ~ stage.name ~ "?", "Remove stage", danger=true, action="/admin/tournaments/" ~ tournament.id ~ "/stages/" ~ stage.id ~ "/remove", csrf=csrf_token) %}
+      <p>The stage and all its maps are deleted. It cannot be undone.</p>
+      {% endcall %}
+      {% endif %}
+    </div>
+    <dl class="facts">
+      <div><dt>Starts</dt><dd>{% if stage.start_at %}{{ local_time(stage.start_at) }}{% else %}<span class="muted">Not set</span>{% endif %}</dd></div>
+      <div><dt>Ends</dt><dd>{% if stage.end_at %}{{ local_time(stage.end_at) }}{% else %}<span class="muted">Not set</span>{% endif %}</dd></div>
+      <div><dt>Format</dt><dd>{{ stage.format_text or "Not set" }}</dd></div>
+    </dl>
+    {% if item.maps %}
+    {% call table("Maps of " ~ stage.name) %}
+    <thead>
+      <tr>
+        <th scope="col">Slot</th>
+        <th scope="col">Map</th>
+        <th scope="col">Mods</th>
+        <th scope="col" class="is-numeric">Stars</th>
+        <th scope="col" class="is-numeric">BPM</th>
+        {% if editable %}<th scope="col"><span class="visually-hidden">Actions</span></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in item.maps %}
+      <tr>
+        <th scope="row">{{ badge(m.slot) }}</th>
+        <td>{% if m.beatmap_id %}<a href="https://osu.ppy.sh/b/{{ m.beatmap_id }}" rel="noopener noreferrer">{{ m.artist or "" }}{% if m.artist and m.title %} - {% endif %}{{ m.title or m.beatmap_id }}{% if m.version %} [{{ m.version }}]{% endif %}</a>{% else %}<span class="muted">Not set</span>{% endif %}</td>
+        <td>{% if m.is_freemod %}Freemod{% elif m.is_tiebreaker %}Tiebreaker{% else %}{{ m.required_mods|mods }}{% endif %}</td>
+        <td class="is-numeric">{{ "%.2f"|format(m.star_rating) if m.star_rating is not none else "-" }}</td>
+        <td class="is-numeric">{{ "%g"|format(m.bpm) if m.bpm is not none else "-" }}</td>
+        {% if editable %}
+        <td>
+          <form method="post" action="/admin/tournaments/{{ tournament.id }}/maps/{{ m.id }}/remove">
+            {{ csrf_field(csrf_token) }}
+            {{ button("Remove", variant="text", type="submit") }}
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    {% else %}
+    {{ empty_state("The pool for this stage is not published yet." ~ (" Add its maps below." if editable else (" It will appear here automatically." if tournament.source == "wybin" else ""))) }}
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="stack">
+    {{ empty_state("This tournament has no stages yet." ~ (" Add the first one below." if editable else "")) }}
+  </section>
+  {% endfor %}
+
+  {% if editable %}
+  <section class="stack" aria-labelledby="add-stage">
+    <h2 id="add-stage">Add a stage</h2>
+    <form class="stack" method="post" action="/admin/tournaments/{{ tournament.id }}/stages">
+      {{ csrf_field(csrf_token) }}
+      {% set on = fn == "stage" %}
+      {{ field("name", "Stage name", value=vals.name|default("") if on else "", required=true, error=form_error if on and ff == "name" else none, maxlength="60", placeholder="Round of 16", id="stage-name") }}
+      <div class="row row--top">
+        {{ field("start_at", "Starts (UTC)", kind="datetime-local", value=vals.start_at|default("") if on else "", error=form_error if on and ff == "start_at" else none, id="stage-start") }}
+        {{ field("end_at", "Ends (UTC)", kind="datetime-local", value=vals.end_at|default("") if on else "", error=form_error if on and ff == "end_at" else none, id="stage-end") }}
+      </div>
+      <div class="row row--top">
+        {{ field("best_of", "Best of", value=vals.best_of|default("") if on else "", error=form_error if on and ff == "best_of" else none, inputmode="numeric", id="stage-best-of", hint="An odd number, for example 9.") }}
+        {{ field("bans", "Bans per team", value=vals.bans|default("") if on else "", error=form_error if on and ff == "bans" else none, inputmode="numeric", id="stage-bans") }}
+        {{ field("protects", "Protects per team", value=vals.protects|default("") if on else "", error=form_error if on and ff == "protects" else none, inputmode="numeric", id="stage-protects") }}
+      </div>
+      {{ checkbox("is_qualifier", "Qualifier stage", checked=(vals.is_qualifier|default(false) if on else false), id="stage-qualifier") }}
+      <div>{{ button("Add stage", variant="secondary", type="submit", icon_name="plus") }}</div>
+    </form>
+  </section>
+
+  {% if stage_options %}
+  <section class="stack" aria-labelledby="add-map">
+    <h2 id="add-map">Add a map</h2>
+    <p class="muted">The slot decides the required mods: NM1 needs none, HD2 needs Hidden, FM1 is freemod and TB the tiebreaker. Title, difficulty and length are looked up on osu!.</p>
+    <form class="stack" method="post" action="/admin/tournaments/{{ tournament.id }}/maps">
+      {{ csrf_field(csrf_token) }}
+      {% set on = fn == "map" %}
+      {{ field("stage_id", "Stage", options=stage_options, value=vals.stage_id|default("") if on else "", required=true, error=form_error if on and ff == "stage_id" else none, id="map-stage") }}
+      {{ field("slot", "Slot", value=vals.slot|default("") if on else "", required=true, error=form_error if on and ff == "slot" else none, placeholder="NM1", maxlength="12", autocomplete="off", id="map-slot") }}
+      {{ field("beatmap", "Beatmap link or id", value=vals.beatmap|default("") if on else "", required=true, error=form_error if on and ff == "beatmap" else none, placeholder="https://osu.ppy.sh/b/129891", autocomplete="off", id="map-beatmap") }}
+      <div>{{ button("Add map", variant="secondary", type="submit", icon_name="plus") }}</div>
+    </form>
+  </section>
+  {% endif %}
+  {% endif %}
+
+</div>
+{% endblock %}

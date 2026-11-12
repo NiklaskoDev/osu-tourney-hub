@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from app.clients.osu import OsuClient, OsuError, OsuNotFound
 from app.clock import Clock
 from app.domain.models import Role
+from app.domain.parsing import parse_uint
 from app.repos import members as members_repo
 from app.services.access import ROLE_LABELS, effective_role, is_temp_captain_active
 from app.services.members import (
@@ -105,11 +106,12 @@ async def add_guest_route(
     error: str | None = None
     status = 422
     profile = None
-    if not (entered.isascii() and entered.isdecimal() and 0 < int(entered) < 2**31):
+    osu_user_id = parse_uint(entered)
+    if osu_user_id is None or not 0 < osu_user_id < 2**31:
         error = "Enter the osu! user id as a number, for example 2."
     else:
         try:
-            profile = await osu.get_user(int(entered))
+            profile = await osu.get_user(osu_user_id)
         except OsuNotFound:
             error = UNKNOWN_OSU_USER
         except OsuError:

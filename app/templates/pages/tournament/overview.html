@@ -1,6 +1,9 @@
 {% extends "layout/tournament.html" %}
 {% from "components/alert.html" import alert %}
 {% from "components/badge.html" import badge %}
+{% from "components/countdown.html" import local_time %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/table.html" import table %}
 {% block title %}{{ tournament.name }} - {% endblock %}
 {% block tournament_content %}
 <div class="page__header">
@@ -11,6 +14,39 @@
 {% endif %}
 <dl class="facts">
   <div><dt>Your role</dt><dd>{{ badge(role_name) }}</dd></div>
+  <div><dt>Game mode</dt><dd>{{ mode }}</dd></div>
+  <div><dt>Format</dt><dd>{% if tournament.is_solo %}Solo{% elif tournament.team_size_min and tournament.team_size_max and tournament.team_size_min != tournament.team_size_max %}Teams of {{ tournament.team_size_min }} to {{ tournament.team_size_max }}{% elif tournament.team_size_max %}Teams of {{ tournament.team_size_max }}{% else %}Teams{% endif %}</dd></div>
+  <div><dt>{{ "Your entry" if tournament.is_solo else "Our team" }}</dt><dd>{% if our_team %}{{ our_team.name }}{% else %}<span class="muted">Not set</span>{% endif %}</dd></div>
   <div><dt>Members</dt><dd><a href="/t/{{ tournament.id }}/members">{{ member_count }}</a></dd></div>
+  {% if tournament.final_placing %}<div><dt>Final placing</dt><dd>{{ tournament.final_placing }}</dd></div>{% endif %}
+  {% if tournament.source == "wybin" %}<div><dt>Last synced from wybin</dt><dd>{% if tournament.last_synced_at %}{{ local_time(tournament.last_synced_at) }}{% else %}<span class="muted">Never</span>{% endif %}</dd></div>{% endif %}
 </dl>
+
+<section class="stack" aria-labelledby="stages-heading">
+  <h2 id="stages-heading">Stages</h2>
+  {% if stages %}
+  {% call table("Stages") %}
+  <thead>
+    <tr>
+      <th scope="col">Stage</th>
+      <th scope="col">Starts</th>
+      <th scope="col">Format</th>
+      <th scope="col">Map pool</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for stage in stages %}
+    <tr>
+      <th scope="row">{{ stage.name }}{% if stage.is_qualifier %} <span class="muted">(qualifier)</span>{% endif %}</th>
+      <td>{% if stage.start_at %}{{ local_time(stage.start_at) }}{% else %}<span class="muted">Not set</span>{% endif %}</td>
+      <td>{{ stage.format_text or "Not set" }}</td>
+      <td>{{ "Published" if stage.pool_released else "Not published yet" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  {% else %}
+  {{ empty_state("This tournament has no stages yet." ~ (" They appear here after the next wybin sync." if tournament.source == "wybin" else "")) }}
+  {% endif %}
+</section>
 {% endblock %}

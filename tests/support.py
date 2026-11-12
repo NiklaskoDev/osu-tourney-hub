@@ -1,6 +1,9 @@
 """Test doubles and database helpers shared by the test modules. Everything here is synthetic."""
 
+import copy
+import json
 import sqlite3
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -13,6 +16,7 @@ from app.repos import users as users_repo
 from app.web.deps import get_clock, get_db
 from app.web.session import establish_session
 
+FIXTURES = Path(__file__).parent / "fixtures"
 ADMIN_ID = 1001  # first id in ADMIN_OSU_IDS of the test settings
 USER_TOKEN_PREFIX = "user-token-"
 APP_TOKEN = "app-token"
@@ -35,6 +39,7 @@ class FakeOsu:
         self.reject_lookups = 0  # user lookups answered with 401 before normal service
         self.unavailable_paths: set[str] = set()  # these URL paths always answer 503
         self.garbage_paths: set[str] = set()  # these URL paths answer 200 with a non-JSON body
+        self.beatmaps: dict[int, dict] = {}
         self.transport = httpx.MockTransport(self._handle)
 
     def add_user(self, osu_id: int, username: str, country: str = "DE") -> None:
@@ -43,6 +48,24 @@ class FakeOsu:
             "username": username,
             "avatar_url": f"https://a.ppy.sh/{osu_id}?1",
             "country_code": country,
+        }
+
+    def add_beatmap(
+        self, beatmap_id: int, artist: str = "Synth Artist", title: str = "Song"
+    ) -> None:
+        self.beatmaps[beatmap_id] = {
+            "id": beatmap_id,
+            "beatmapset_id": beatmap_id + 1000,
+            "version": "Insane",
+            "difficulty_rating": 6.25,
+            "bpm": 180.0,
+            "total_length": 200,
+            "cs": 4.0,
+            "ar": 9.0,
+            "accuracy": 8.5,
+            "drain": 5.0,
+            "mode_int": 2,
+            "beatmapset": {"artist": artist, "title": title, "creator": "MapperMia"},
         }
 
     def calls(self, method: str, path_suffix: str) -> list[httpx.Request]:
@@ -63,6 +86,8 @@ class FakeOsu:
             return self._me(request)
         if request.method == "GET" and path.startswith("/api/v2/users/"):
             return self._user(request, path.rsplit("/", 1)[1])
+        if request.method == "GET" and path.startswith("/api/v2/beatmaps/"):
+            return self._beatmap(request, path.rsplit("/", 1)[1])
         return httpx.Response(404)
 
     def _token(self, request: httpx.Request) -> httpx.Response:
@@ -83,6 +108,12 @@ class FakeOsu:
             return httpx.Response(401)
         return httpx.Response(200, json=self.profiles[int(token[len(USER_TOKEN_PREFIX) :])])
 
+    def _beatmap(self, request: httpx.Request, raw_id: str) -> httpx.Response:
+        if request.headers.get("Authorization") != f"Bearer {APP_TOKEN}":
+            return httpx.Response(401)
+        beatmap = self.beatmaps.get(int(raw_id))
+        return httpx.Response(200, json=beatmap) if beatmap is not None else httpx.Response(404)
+
     def _user(self, request: httpx.Request, raw_id: str) -> httpx.Response:
         if self.reject_lookups > 0:
             self.reject_lookups -= 1
@@ -91,6 +122,76 @@ class FakeOsu:
             return httpx.Response(401)
         profile = self.profiles.get(int(raw_id))
         return httpx.Response(200, json=profile) if profile else httpx.Response(404)
+
+
+def load_fixture(name: str) -> dict:
+    """A synthetic wybin response from tests/fixtures/wybin (a fresh copy every call)."""
+    return json.loads((FIXTURES / "wybin" / f"{name}.json").read_text("utf-8"))
+
+
+class FakeWybin:
+    """Stands in for wybin.xyz/api/v1. No real network."""
+
+    def __init__(self) -> None:
+        self.tournaments: dict[str, dict] = {}  # by slug
+        self.mappools: dict[int, dict] = {}  # by wybin tournament id
+        self.users: dict[int, dict] = {}  # by wybin user id
+        self.requests: list[httpx.Request] = []
+        self.failures: list[int] = []  # statuses returned (once each) before normal service
+        self.down = False  # every request answers 503
+        self.transport = httpx.MockTransport(self.handle)
+
+    def load_defaults(self) -> None:
+        """The team tournament, the solo tournament, the pool and one user's sign-ups."""
+        team = load_fixture("tournament_team")
+        solo = load_fixture("tournament_solo")
+        self.tournaments = {team["slug"]: team, solo["slug"]: solo}
+        # Like the real matches endpoint, a tournament without pool data answers an empty wrapper.
+        self.mappools = {
+            team["id"]: load_fixture("mappools"),
+            solo["id"]: {"id": solo["id"], "stages": []},
+        }
+        detail = load_fixture("user_detailed")
+        self.users = {detail["id"]: detail}
+
+    def paths(self) -> list[str]:
+        return [request.url.path for request in self.requests]
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self.down:
+            return httpx.Response(503, text="<html>down</html>")
+        if self.failures:
+            return httpx.Response(self.failures.pop(0))
+        prefix = "/api/v1/"
+        if request.method != "GET" or not request.url.path.startswith(prefix):
+            return httpx.Response(404, json={"status": 404})
+        kind, _, key = request.url.path.removeprefix(prefix).partition("/")
+        found: dict | None = None
+        if kind == "tournament":
+            found = self.tournaments.get(key)
+        elif key.isdecimal() and kind == "tournament-mappools":
+            found = self.mappools.get(int(key))
+        elif key.isdecimal() and kind == "users-detailed":
+            found = self.users.get(int(key))
+        if found is None:
+            return httpx.Response(404, json={"status": 404, "error": "Not Found"})
+        return httpx.Response(200, json=copy.deepcopy(found))
+
+
+class NoRealNetwork:
+    """Routes each request to the fake of its host. Any other host fails the test: tests never
+    reach the internet."""
+
+    def __init__(self, osu: FakeOsu, wybin: FakeWybin) -> None:
+        self._hosts = {"osu.ppy.sh": osu._handle, "wybin.xyz": wybin.handle}
+        self.transport = httpx.MockTransport(self._route)
+
+    def _route(self, request: httpx.Request) -> httpx.Response:
+        handler = self._hosts.get(request.url.host)
+        if handler is None:
+            raise AssertionError(f"a test tried to reach {request.url.host}")
+        return handler(request)
 
 
 def osu_login(client, osu_id: int, next_url: str | None = None) -> httpx.Response:

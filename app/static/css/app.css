@@ -123,8 +123,13 @@ code,
   text-decoration: none;
 }
 
-.topbar__nav a:hover {
+.topbar__nav a:hover,
+.topbar__nav a[aria-current="page"] {
   color: var(--text);
+}
+
+.topbar__nav a[aria-current="page"] {
+  font-weight: var(--weight-strong);
 }
 
 .topbar__user {
@@ -182,6 +187,10 @@ code,
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
+}
+
+.row--top {
+  align-items: flex-start;
 }
 
 .row--nowrap {

@@ -13,7 +13,7 @@ from app.clients.ratelimit import RateLimiter
 from app.config import Settings
 from app.db.connection import open_db
 from app.main import create_app
-from tests.support import ADMIN_ID, FakeOsu, add_test_login
+from tests.support import ADMIN_ID, FakeOsu, FakeWybin, NoRealNetwork, add_test_login
 
 BASE_URL = "https://tourney.example.com"  # secure cookies are only sent over https
 CSRF_INPUT = re.compile(r'name="csrf_token" value="([^"]+)"')
@@ -56,23 +56,33 @@ def osu() -> FakeOsu:
 
 
 @pytest.fixture
+def wybin() -> FakeWybin:
+    return FakeWybin()
+
+
+@pytest.fixture
 def osu_delays() -> list[float]:
     """Back-off delays the osu! client asked for. Tests never really sleep."""
     return []
 
 
 @pytest.fixture
-def app(settings, clock, osu, osu_delays) -> FastAPI:
-    built = create_app(settings, clock, http_transport=osu.transport)
+def app(settings, clock, osu, wybin, osu_delays) -> FastAPI:
+    network = NoRealNetwork(osu, wybin)
+    built = create_app(settings, clock, http_transport=network.transport, start_workers=False)
     add_test_login(built)
 
     async def record_delay(seconds: float) -> None:
         osu_delays.append(seconds)
 
+    async def no_sleep(seconds: float) -> None:
+        return None
+
     # The real limiter allows 60 calls a minute after a burst of 5, which would slow down tests
     # that log in several times; back-off sleeping is recorded instead of waited for.
     built.state.osu._limiter = RateLimiter(rate_per_min=60_000, burst=1000)
     built.state.osu._sleep = record_delay
+    built.state.wybin._sleep = no_sleep
     return built
 
 

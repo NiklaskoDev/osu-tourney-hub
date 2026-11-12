@@ -16,12 +16,24 @@ from app import __version__
 from app.clients.http import make_http_client
 from app.clients.osu import OsuClient
 from app.clients.ratelimit import RateLimiter
+from app.clients.wybin import WybinClient
 from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db.connection import open_db
 from app.db.migrate import migrate
 from app.web.error_pages import install_error_handlers
-from app.web.routes import auth, dashboard, health, me, members, styleguide, tournament
+from app.web.routes import (
+    admin,
+    admin_setup,
+    auth,
+    dashboard,
+    health,
+    me,
+    members,
+    styleguide,
+    tournament,
+    tournament_settings,
+)
 from app.web.security import (
     AUTH_LIMIT_PER_MINUTE,
     SecurityHeadersMiddleware,
@@ -29,6 +41,8 @@ from app.web.security import (
     require_csrf,
 )
 from app.web.session import MAX_AGE_SECONDS
+from app.workers.jobs import build_jobs
+from app.workers.scheduler import Scheduler
 
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -36,14 +50,20 @@ AUTH_WINDOW = timedelta(minutes=1)
 
 
 def create_app(
-    settings: Settings, clock: Clock, http_transport: httpx.AsyncBaseTransport | None = None
+    settings: Settings,
+    clock: Clock,
+    http_transport: httpx.AsyncBaseTransport | None = None,
+    start_workers: bool = True,
 ) -> FastAPI:
-    """Build the app. `http_transport` replaces the network for every osu! call (tests)."""
+    """Build the app. `http_transport` replaces the network for every osu! and wybin call
+    (tests); `start_workers=False` keeps the background jobs from starting."""
     logging.basicConfig(
         level=settings.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
 
     http = make_http_client(http_transport)
+    wybin = WybinClient(http, settings.wybin_min_interval_seconds)
+    scheduler = Scheduler(settings.db_path, clock, build_jobs(settings, clock, wybin))
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -54,9 +74,12 @@ def create_app(
         finally:
             conn.close()
         logger.info("Started osu-tourney-hub %s (migrations applied: %s)", __version__, applied)
+        if start_workers:
+            scheduler.start()
         try:
             yield
         finally:
+            await scheduler.stop()
             await http.aclose()
 
     # No interactive API docs: the app serves HTML pages, not a public API.
@@ -74,6 +97,8 @@ def create_app(
     app.state.osu = OsuClient(
         settings, http, RateLimiter(settings.osu_api_rate_per_min), clock, transport=http_transport
     )
+    app.state.wybin = wybin
+    app.state.scheduler = scheduler
     app.state.auth_limiter = SlidingWindowLimiter(AUTH_LIMIT_PER_MINUTE, AUTH_WINDOW, clock)
     # Added last = outermost, so the security headers also cover session and error responses.
     app.add_middleware(
@@ -96,6 +121,9 @@ def create_app(
         me.router,
         tournament.router,
         members.router,
+        tournament_settings.router,
+        admin.router,
+        admin_setup.router,
         styleguide.router,
     ):
         app.include_router(router)
