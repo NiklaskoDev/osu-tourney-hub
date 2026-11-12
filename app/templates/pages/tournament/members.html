@@ -53,14 +53,15 @@
 <tbody>
   {% for row in rows %}
   {% set member = row.member %}
-  {% set locked = row.is_self and not access.is_admin %}
+  {% set locked = (row.is_self and not access.is_admin) or row.captain_locked %}
+  {% set lock_reason = "You cannot change your own role." if (row.is_self and not access.is_admin) else "Only a captain or an administrator can change a captain." %}
   <tr>
     <th scope="row">{{ person(member) }}<div>{{ temp_note(row) }}</div></th>
     <td>
       {% if locked %}
       <input type="hidden" name="role" value="{{ member.role }}" form="edit-{{ member.osu_id }}">
       {% endif %}
-      {{ field("role" if not locked else "role_shown", "Role of " ~ (member.username or member.osu_id), options=role_options, value=member.role, id="role-" ~ member.osu_id, label_hidden=true, required=true, disabled=(archived or locked), form="edit-" ~ member.osu_id, title=("You cannot change your own role." if locked else "")) }}
+      {{ field("role" if not locked else "role_shown", "Role of " ~ (member.username or member.osu_id), options=(role_options if can_set_captain else role_options_without_captain) if not row.captain_locked else role_options, value=member.role, id="role-" ~ member.osu_id, label_hidden=true, required=true, disabled=(archived or locked), form="edit-" ~ member.osu_id, title=(lock_reason if locked else "")) }}
     </td>
     <td>
       {{ checkbox("is_substitute", "Substitute: " ~ (member.username or member.osu_id), label_hidden=true, checked=member.is_substitute, disabled=archived, id="sub-" ~ member.osu_id, form="edit-" ~ member.osu_id) }}
@@ -77,7 +78,7 @@
           {{ csrf_field(csrf_token) }}
           {{ button("Save", variant="secondary", type="submit", disabled=archived) }}
         </form>
-        {{ button("Remove", variant="text", disabled=archived, data_dialog_open="remove-" ~ member.osu_id) }}
+        {{ button("Remove", variant="text", disabled=(archived or row.captain_locked), data_dialog_open="remove-" ~ member.osu_id, title=("Only a captain or an administrator can remove a captain." if row.captain_locked else "")) }}
         {% call dialog("remove-" ~ member.osu_id, "Remove " ~ (member.username or member.osu_id) ~ "?", "Remove from tournament", danger=true, action="/t/" ~ tournament.id ~ "/members/" ~ member.osu_id ~ "/remove", csrf=csrf_token) %}
         <p>They lose access to this tournament right away.</p>
         {% endcall %}

@@ -136,6 +136,7 @@ def test_a_temporary_captain_period_is_stored_in_utc_and_can_be_cleared(
 def test_a_temporary_captain_can_manage_the_roster_until_the_time_runs_out(
     client, as_captain, tid, db, login, csrf, clock
 ):
+    add_member(db, tid, 2003, "player")
     client.post(
         f"/t/{tid}/members/2002",
         data={**as_captain, "role": "player", "temp_captain_until": "2026-11-12T13:00"},
@@ -143,9 +144,10 @@ def test_a_temporary_captain_can_manage_the_roster_until_the_time_runs_out(
     login(2002)
     token = csrf()
 
-    assert (
-        client.post(f"/t/{tid}/members/2001", data={**token, "role": "captain"}).status_code == 200
-    )
+    response = client.post(f"/t/{tid}/members/2003", data={**token, "role": "co_captain"})
+
+    assert response.status_code == 200
+    assert stored(db, tid, 2003)[0] == "co_captain"
 
 
 @pytest.mark.parametrize("text", ["tomorrow", "2026-13-40T99:99", "2026-11-13", "2026-11-13 20:00"])
@@ -219,7 +221,7 @@ def test_the_last_captain_cannot_be_removed(client, login, csrf, tid, db):
 
 def test_a_co_captain_does_not_count_as_the_captain(client, db, login, csrf, tid):
     add_member(db, tid, 2003, "co_captain")
-    login(2003)
+    login(ADMIN_ID)
 
     response = client.post(f"/t/{tid}/members/2001", data={**csrf(), "role": "co_captain"})
 
@@ -317,6 +319,170 @@ def test_players_cannot_change_roles_and_guests_cannot_post_anything(client, db,
     assert stored(db, tid, 2002)[0] == "player"
     assert stored(db, tid, 2001)[0] == "captain"
     assert stored(db, tid, 3001) is None
+
+
+# --- who may give or take the captain role ---
+
+FAR_FUTURE = "2099-01-01T00:00:00Z"
+
+
+@pytest.fixture
+def two_captains(db, tid):
+    """A second captain, so the last-captain rule is never what refuses a change."""
+    add_member(db, tid, 2004, "captain")
+
+
+def become(db, tid, kind):
+    """Add a co-captain or an active temporary captain (2003) and return their id."""
+    if kind == "co_captain":
+        add_member(db, tid, 2003, "co_captain")
+    else:
+        add_member(db, tid, 2003, "player", temp_captain_until=FAR_FUTURE)
+    return 2003
+
+
+def button_of(page, dialog_id):
+    """The opening tag of the Remove button that opens the given dialog."""
+    head = page.split(f'data-dialog-open="{dialog_id}"')[0]
+    return head.rsplit("<button", 1)[1]
+
+
+@pytest.mark.parametrize("kind", ["co_captain", "temp_captain"])
+def test_co_and_temporary_captains_cannot_give_or_take_the_captain_role(
+    client, db, login, csrf, tid, two_captains, kind
+):
+    login(become(db, tid, kind))
+    token = csrf()
+
+    promote = client.post(f"/t/{tid}/members/2002", data={**token, "role": "captain"})
+    demote = client.post(f"/t/{tid}/members/2004", data={**token, "role": "player"})
+    remove = client.post(f"/t/{tid}/members/2004/remove", data=token)
+
+    assert (promote.status_code, demote.status_code, remove.status_code) == (403, 403, 403)
+    assert "Only a captain or an administrator" in promote.text
+    assert stored(db, tid, 2002)[0] == "player"
+    assert stored(db, tid, 2004)[0] == "captain"
+
+
+@pytest.mark.parametrize("kind", ["co_captain", "temp_captain"])
+def test_a_captain_can_still_be_edited_without_changing_the_role(
+    client, db, login, csrf, tid, two_captains, kind
+):
+    login(become(db, tid, kind))
+
+    response = client.post(
+        f"/t/{tid}/members/2004", data={**csrf(), "role": "captain", "is_substitute": "1"}
+    )
+
+    assert response.status_code == 200
+    assert stored(db, tid, 2004)[:2] == ("captain", 1)
+
+
+@pytest.mark.parametrize("kind", ["co_captain", "temp_captain"])
+def test_co_and_temporary_captains_keep_their_other_roster_powers(
+    client, db, login, csrf, tid, osu, kind
+):
+    osu.add_user(3001, "NewGuest")
+    login(become(db, tid, kind))
+    token = csrf()
+
+    role = client.post(f"/t/{tid}/members/2002", data={**token, "role": "co_captain"})
+    sub = client.post(
+        f"/t/{tid}/members/2002", data={**token, "role": "co_captain", "is_substitute": "1"}
+    )
+    back = client.post(f"/t/{tid}/members/2002", data={**token, "role": "player"})
+    period = client.post(
+        f"/t/{tid}/members/2002",
+        data={**token, "role": "player", "temp_captain_until": "2026-11-13T20:00"},
+    )
+    guest = client.post(f"/t/{tid}/members", data={**token, "osu_id": "3001"})
+    removed = client.post(f"/t/{tid}/members/2002/remove", data=token)
+
+    assert [r.status_code for r in (role, sub, back, period, guest, removed)] == [200] * 6
+    assert stored(db, tid, 3001)[0] == "guest"
+    assert stored(db, tid, 2002) is None
+
+
+def test_a_co_captain_can_change_the_role_and_substitute_flag_of_a_player(
+    client, db, login, csrf, tid
+):
+    add_member(db, tid, 2003, "co_captain")
+    login(2003)
+    token = csrf()
+
+    client.post(f"/t/{tid}/members/2002", data={**token, "role": "guest", "is_substitute": "1"})
+    assert stored(db, tid, 2002)[:2] == ("guest", 0)  # a guest is never a substitute
+
+    client.post(f"/t/{tid}/members/2002", data={**token, "role": "player", "is_substitute": "1"})
+    assert stored(db, tid, 2002)[:2] == ("player", 1)
+
+
+def test_an_expired_temporary_captain_cannot_change_the_roster_at_all(client, db, login, csrf, tid):
+    add_member(db, tid, 2003, "player", temp_captain_until="2000-01-01T00:00:00Z")
+    login(2003)
+
+    response = client.post(f"/t/{tid}/members/2002", data={**csrf(), "role": "captain"})
+
+    assert response.status_code == 403
+    assert stored(db, tid, 2002)[0] == "player"
+
+
+def test_a_captain_can_give_and_take_the_captain_role_and_remove_a_captain(
+    client, as_captain, tid, db
+):
+    promote = client.post(f"/t/{tid}/members/2002", data={**as_captain, "role": "captain"})
+    assert stored(db, tid, 2002)[0] == "captain"
+    demote = client.post(f"/t/{tid}/members/2002", data={**as_captain, "role": "player"})
+    assert stored(db, tid, 2002)[0] == "player"
+    client.post(f"/t/{tid}/members/2002", data={**as_captain, "role": "captain"})
+    remove = client.post(f"/t/{tid}/members/2002/remove", data=as_captain)
+
+    assert (promote.status_code, demote.status_code, remove.status_code) == (200, 200, 200)
+    assert stored(db, tid, 2002) is None
+
+
+def test_an_admin_can_give_and_take_the_captain_role_and_remove_a_captain(
+    client, login, csrf, tid, db, two_captains
+):
+    login(ADMIN_ID)  # not on the roster
+    token = csrf()
+
+    promote = client.post(f"/t/{tid}/members/2002", data={**token, "role": "captain"})
+    demote = client.post(f"/t/{tid}/members/2004", data={**token, "role": "player"})
+    remove = client.post(f"/t/{tid}/members/2001/remove", data=token)
+
+    assert (promote.status_code, demote.status_code, remove.status_code) == (200, 200, 200)
+    assert stored(db, tid, 2002)[0] == "captain"
+    assert stored(db, tid, 2004)[0] == "player"
+    assert stored(db, tid, 2001) is None
+
+
+@pytest.mark.parametrize("kind", ["co_captain", "temp_captain"])
+def test_the_page_hides_the_captain_option_from_those_who_cannot_use_it(
+    client, db, login, tid, kind
+):
+    login(become(db, tid, kind))
+
+    page = client.get(f"/t/{tid}/members").text
+
+    player_row = page.split('id="role-2002"')[1].split("</select>")[0]
+    assert '<option value="co_captain"' in player_row
+    assert '<option value="captain"' not in player_row
+    captain_row = page.split('id="role-2001"')[1].split("</select>")[0]
+    assert '<option value="captain" selected>' in captain_row
+    assert 'name="role" value="captain" form="edit-2001"' in page  # sent unchanged on Save
+    assert "disabled" in button_of(page, "remove-2001")
+    assert "disabled" not in button_of(page, "remove-2002")
+
+
+def test_captains_and_admins_see_the_captain_option_and_can_remove_captains(client, db, login, tid):
+    for viewer in (2001, ADMIN_ID):
+        login(viewer)
+
+        page = client.get(f"/t/{tid}/members").text
+
+        assert '<option value="captain"' in page.split('id="role-2002"')[1].split("</select>")[0]
+        assert "disabled" not in button_of(page, "remove-2002")
 
 
 # --- removing ---

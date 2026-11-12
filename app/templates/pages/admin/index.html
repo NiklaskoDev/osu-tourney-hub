@@ -74,7 +74,7 @@
             {% endif %}
             {{ button("Delete", variant="text", icon_name="trash-2", data_dialog_open="delete-" ~ t.id) }}
             {% call dialog("delete-" ~ t.id, "Delete " ~ t.name ~ "?", "Delete tournament", danger=true, action="/admin/tournaments/" ~ t.id ~ "/delete", csrf=csrf_token) %}
-            <p>This deletes the tournament with its stages, maps, teams and roster. It cannot be undone. A tournament from wybin is not imported again automatically, but you can still import it by hand. You need to have logged in within the last five minutes; otherwise you are sent through the login first.</p>
+            <p>This deletes the tournament with its stages, maps, teams, roster, lineups and notes. Scores are kept, but they lose their link to this tournament. It cannot be undone. A tournament from wybin is not imported again automatically, but you can still import it by hand. You need to have logged in within the last five minutes; otherwise you are sent through the login first.</p>
             {{ field("confirm", "Type " ~ row.confirm_text ~ " to confirm", id="confirm-" ~ t.id, required=true, autocomplete="off") }}
             {% endcall %}
           </div>

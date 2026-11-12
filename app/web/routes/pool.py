@@ -172,7 +172,6 @@ async def delete_score(
     access: TournamentAccess = Depends(player_access),
     _writable: TournamentAccess = Depends(require_writable),
     db: sqlite3.Connection = Depends(get_db),
-    clock: Clock = Depends(get_clock),
 ) -> Response:
     try:
         entry.delete_score(db, access.tournament, _actor(access), score_id)

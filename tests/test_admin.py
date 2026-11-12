@@ -479,6 +479,13 @@ def test_sync_now_with_wybin_down_changes_nothing(client, as_admin, db, fake):
 # --- delete ---
 
 
+def test_the_delete_dialog_says_what_is_deleted_and_what_is_kept(client, as_admin, spring):
+    page = client.get("/admin").text
+
+    assert "lineups and notes" in page
+    assert "Scores are kept, but they lose their link to this tournament" in page
+
+
 def test_deleting_needs_the_acronym_typed_and_removes_everything(client, as_admin, db):
     import_cup(client, as_admin)
     tid = tournament_id(db)

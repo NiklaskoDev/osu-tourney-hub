@@ -32,6 +32,12 @@ def effective_role(member: Member, now: datetime) -> Role:
     return Role.GUEST
 
 
+def may_change_captain_role(is_admin: bool, member: Member | None) -> bool:
+    """Only an admin or a stored captain gives or takes the captain role. Co-captains and
+    temporary captains manage the rest of the roster but cannot choose who the captains are."""
+    return is_admin or (member is not None and member.role == "captain")
+
+
 def role_for(is_admin: bool, member: Member | None, now: datetime) -> Role | None:
     """The viewer's level in a tournament, or None when they have no access at all."""
     if is_admin:

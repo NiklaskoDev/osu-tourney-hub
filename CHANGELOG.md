@@ -33,7 +33,13 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - Archiving a hidden tournament is refused until it is restored, mirroring hiding an archived one.
 - `/styleguide` is now for administrators only; the `STYLEGUIDE_PREVIEW` setting is removed.
 - `/healthz` opens the database read-only, so a missing database file is reported as unhealthy instead of being created.
+- Only a captain or an administrator can make someone captain, take the captain role away or remove a captain. Co-captains and temporary captains keep every other Members action; the captain option and the Remove button are hidden from them, and the server refuses the change.
+- Guests may read team notes on the Pool page (as before); they still cannot write or delete notes. Now covered by a test.
+- Deleting a tournament says on the Admin page that lineups and notes go with it and that scores are kept without their tournament link.
 - README: port 8080 must only be reachable through the reverse proxy; corrected which settings are read yet.
+
+### Fixed
+- A refused lineup save keeps the "include substitutes" choice; `subs` in the lineup address only counts when it is `1`.
 
 ### Security
 - CSRF token on every state-changing request, a per-IP limit of 20 requests a minute on the login routes, and session cookies that are HttpOnly, Secure (on https) and SameSite=Lax.

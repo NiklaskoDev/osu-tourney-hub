@@ -74,8 +74,9 @@ background jobs and live updates run in-process, so do not add uvicorn `--worker
 
 Everyone logs in with their osu! account; the app reads only the osu! user id, username, avatar and
 country. The osu! ids in `ADMIN_OSU_IDS` are administrators and can open every tournament. Inside a
-tournament there are four roles: captain and co-captain (can manage members), player, and guest
-(read-only). A player can be made temporary captain until a set time. Captains add guests by osu!
+tournament there are four roles: captain and co-captain (can manage members; only captains and
+administrators can make or remove a captain), player, and guest (read-only, may read team notes).
+A player can be made temporary captain until a set time. Captains add guests by osu!
 user id on the Members page. Each person can download or delete their data on the Profile page.
 A session ends 14 days after the last visit; "Log out everywhere" on the Profile page ends all of them.
 

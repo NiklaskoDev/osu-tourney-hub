@@ -26,6 +26,7 @@ class MemberError(Exception):
 class Actor:
     osu_id: int
     is_admin: bool
+    may_change_captain_role: bool
 
 
 def parse_temp_captain_until(text: str) -> str | None:
@@ -77,6 +78,8 @@ def update_member(
             temp_captain_until = None
         if role == "guest":
             is_substitute = False
+        if (role == "captain") != (target.role == "captain"):
+            _require_captain_authority(actor)
         _refuse_self_promotion(actor, target, role, temp_captain_until)
         if target.role == "captain" and role != "captain":
             _require_another_captain(conn, tournament_id)
@@ -95,9 +98,15 @@ def remove_member(
         if target is None:
             raise MemberError("This person is not on the roster.", 404)
         if target.role == "captain":
+            _require_captain_authority(actor)
             _require_another_captain(conn, tournament_id)
         members_repo.remove(conn, tournament_id, target_id)
     return target
+
+
+def _require_captain_authority(actor: Actor) -> None:
+    if not actor.may_change_captain_role:
+        raise MemberError("Only a captain or an administrator can change who is captain.", 403)
 
 
 def _refuse_self_promotion(

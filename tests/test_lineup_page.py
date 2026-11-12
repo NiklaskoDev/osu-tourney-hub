@@ -438,3 +438,61 @@ def test_deleting_a_tournament_removes_its_lineup_and_notes_but_keeps_scores(
     assert lineup_rows(db) == [] and entries(db) == []
     row = db.execute("SELECT tournament_id FROM scores WHERE score = 123456").fetchone()
     assert row[0] is None
+
+
+def test_a_refused_save_keeps_the_include_substitutes_choice(client, login, csrf, db, cup):
+    login(CAPTAIN)
+    form = {pick(cup, "NM1", 0): str(PLAYER), f"mods_{cup['maps']['FM1']}_0": "XX"}
+
+    response = save(
+        client, csrf(), cup, {**form, pick(cup, "FM1", 0): str(PLAYER), "include_substitutes": "1"}
+    )
+
+    assert response.status_code == 422
+    assert 'name="subs" value="1" checked' in response.text
+    assert "player2005" in suggestion_of(response.text)
+    assert 'name="include_substitutes" value="1"' in response.text  # a second try keeps it
+
+
+def test_a_refused_save_without_the_choice_leaves_substitutes_out(client, login, csrf, db, cup):
+    login(CAPTAIN)
+    form = {pick(cup, "NM1", 0): str(PLAYER), f"mods_{cup['maps']['FM1']}_0": "XX"}
+
+    response = save(client, csrf(), cup, {**form, pick(cup, "FM1", 0): str(PLAYER)})
+
+    assert 'name="subs" value="1" checked' not in response.text
+    assert "player2005" not in suggestion_of(response.text)
+
+
+def test_a_saved_lineup_returns_to_the_page_with_the_choice_kept(client, login, csrf, cup):
+    login(CAPTAIN)
+
+    response = save(client, csrf(), cup, {"include_substitutes": "1"})
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith("&subs=1")
+
+
+def test_the_substitutes_filter_only_counts_when_it_is_exactly_one(client, login, cup):
+    login(PLAYER)
+
+    for value in ("0", "", "true", "yes"):
+        page = client.get(f"/t/{cup['id']}/lineup?stage={cup['stage']}&subs={value}").text
+        assert 'name="subs" value="1" checked' not in page, value
+        assert "player2005" not in suggestion_of(page), value
+
+
+def test_copying_counts_substitutes_only_when_the_field_is_exactly_one(
+    client, login, csrf, db, cup
+):
+    login(CAPTAIN)
+    token = csrf()
+
+    for value in ("0", "", "true", "yes"):
+        copy(client, token, cup, include_substitutes=value)
+        assert (cup["maps"]["NM1"], SUB, "") not in entries(db), value
+
+    response = copy(client, token, cup, include_substitutes="1")
+
+    assert response.headers["location"].endswith("&subs=1")
+    assert (cup["maps"]["NM1"], SUB, "") in entries(db)

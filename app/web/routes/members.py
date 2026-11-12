@@ -11,7 +11,12 @@ from app.clock import Clock
 from app.domain.models import Role
 from app.domain.parsing import parse_uint
 from app.repos import members as members_repo
-from app.services.access import ROLE_LABELS, effective_role, is_temp_captain_active
+from app.services.access import (
+    ROLE_LABELS,
+    effective_role,
+    is_temp_captain_active,
+    may_change_captain_role,
+)
 from app.services.members import (
     Actor,
     MemberError,
@@ -40,7 +45,11 @@ UNKNOWN_OSU_USER = "No osu! user has this id."
 
 
 def _actor(access: TournamentAccess) -> Actor:
-    return Actor(access.user.osu_id, access.is_admin)
+    return Actor(
+        access.user.osu_id,
+        access.is_admin,
+        may_change_captain_role(access.is_admin, access.member),
+    )
 
 
 def _page(
@@ -52,6 +61,7 @@ def _page(
     **extra: Any,
 ) -> HTMLResponse:
     now = clock.now()
+    can_set_captain = may_change_captain_role(access.is_admin, access.member)
     rows = []
     for member in members_repo.list_for_tournament(db, access.tournament.id):
         if member.role == "player" and member.temp_captain_until:
@@ -65,6 +75,8 @@ def _page(
                 "temp_state": temp_state,
                 "temp_value": form_time(member.temp_captain_until),
                 "is_self": member.osu_id == access.user.osu_id,
+                # Taking the captain role from someone, or removing them, is a captain's call.
+                "captain_locked": member.role == "captain" and not can_set_captain,
             }
         )
     context = {
@@ -75,6 +87,10 @@ def _page(
         "can_edit": access.role >= Role.CAPTAIN,
         "archived": access.tournament.status == "archived",
         "role_options": list(ROLE_LABELS.items()),
+        "role_options_without_captain": [
+            option for option in ROLE_LABELS.items() if option[0] != "captain"
+        ],
+        "can_set_captain": can_set_captain,
         "role_labels": ROLE_LABELS,
         **extra,
     }

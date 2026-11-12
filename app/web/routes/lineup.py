@@ -120,7 +120,7 @@ async def lineup_page(
     access: TournamentAccess = Depends(member_access),
     db: sqlite3.Connection = Depends(get_db),
 ) -> HTMLResponse:
-    return _page(request, access, db, stage, bool(subs))
+    return _page(request, access, db, stage, subs == "1")
 
 
 @router.post("/copy-suggestion")
@@ -136,13 +136,14 @@ async def copy_suggestion(
     chosen = _stage_or_none(db, access.tournament.id, stage)
     if chosen is None:
         return error_page(request, 404, "This stage is not in this tournament.")
+    with_substitutes = include_substitutes == "1"
     data = pool_sheet.load_stage(db, access.tournament, chosen)
-    suggestions = pool_sheet.suggest_for_stage(data, access.tournament, bool(include_substitutes))
+    suggestions = pool_sheet.suggest_for_stage(data, access.tournament, with_substitutes)
     lineup_edit.copy_suggestion(
         db, access.tournament, chosen, suggestions, access.user.osu_id, clock.now()
     )
     flash(request, "success", "Suggested lineup copied. It is saved as a draft you can edit.")
-    return _back(access.tournament.id, chosen.id, bool(include_substitutes))
+    return _back(access.tournament.id, chosen.id, with_substitutes)
 
 
 @router.post("")
@@ -155,6 +156,7 @@ async def save_lineup(
 ) -> Response:
     fields = await request.form()
     values = {key: value for key, value in fields.items() if isinstance(value, str)}
+    include_substitutes = values.get("include_substitutes") == "1"
     chosen = _stage_or_none(db, access.tournament.id, values.get("stage", ""))
     if chosen is None:
         return error_page(request, 404, "This stage is not in this tournament.")
@@ -170,14 +172,14 @@ async def save_lineup(
             access,
             db,
             str(chosen.id),
-            False,
+            include_substitutes,
             refused.status,
             form_values=values,
             form_error=refused.message,
             form_error_field=refused.field,
         )
     flash(request, "success", "Lineup saved.")
-    return _back(access.tournament.id, chosen.id, False)
+    return _back(access.tournament.id, chosen.id, include_substitutes)
 
 
 def _back(tid: int, stage_id: int, include_substitutes: bool) -> RedirectResponse:

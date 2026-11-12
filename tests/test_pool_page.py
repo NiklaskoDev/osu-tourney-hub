@@ -719,3 +719,21 @@ def test_an_archived_tournament_shows_the_sheet_but_rejects_every_write(
     assert (added.status_code, removed.status_code, noted.status_code) == (409, 409, 409)
     assert len(scores(db)) == 1
     assert db.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == 0
+
+
+def test_a_guest_reads_team_notes_but_not_private_ones_and_cannot_write(
+    client, login, csrf, db, cup
+):
+    login(PLAYER)
+    token = csrf()
+    post_note(client, token, cup, body="Team plan for NM1", visibility="team")
+    post_note(client, token, cup, body="Private thought", visibility="private")
+    login(GUEST)
+
+    page = client.get(f"/t/{cup['id']}/pool").text
+    refused = post_note(client, csrf(), cup, body="Guest note")
+
+    assert "Team plan for NM1" in page
+    assert "Private thought" not in page
+    assert refused.status_code == 403
+    assert db.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == 2

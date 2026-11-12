@@ -123,6 +123,7 @@
   <form class="stack" method="post" action="/t/{{ tournament.id }}/lineup">
     {{ csrf_field(csrf_token) }}
     <input type="hidden" name="stage" value="{{ stage.id }}">
+    {% if include_substitutes %}<input type="hidden" name="include_substitutes" value="1">{% endif %}
     <div class="sheet">
     {% call table("Edit the saved lineup for " ~ stage.name) %}
     <thead>
