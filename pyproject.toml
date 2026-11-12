@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "osu-tourney-hub"
+version = "0.1.0"
+description = "Self-hosted osu! tournament team hub"
+requires-python = ">=3.13"
+# Runtime pins live in requirements.txt so CI and the Docker image install the same set.
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["templates/**/*", "static/**/*", "db/migrations/*.sql"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# Asserts and dummy credentials are normal in tests.
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,204 @@
+{% extends "layout/shell.html" %}
+{% from "components/icon.html" import icon %}
+{% from "components/button.html" import button %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% from "components/tabs.html" import tabs %}
+{% from "components/badge.html" import badge %}
+{% from "components/alert.html" import alert %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/dialog.html" import dialog %}
+{% from "components/countdown.html" import countdown, local_time %}
+{% from "components/pagination.html" import pagination %}
+{% from "components/copy_button.html" import copy_button %}
+{% from "components/availability_cell.html" import availability_cell %}
+{% block title %}Styleguide - {% endblock %}
+
+{% block content %}
+<div class="page__header">
+  <h1>Styleguide</h1>
+  <p class="muted">Every token and component in every state. Sample values only.</p>
+</div>
+
+<div class="stack">
+
+  <section class="guide-section" aria-labelledby="g-colour">
+    <h2 id="g-colour">Colour</h2>
+    <p class="muted">Neutral surfaces and one accent. Dark theme follows the system setting.</p>
+    <div class="swatches">
+      {% for name in ["bg", "surface", "surface-2", "border", "text", "text-muted", "accent", "success", "warning", "danger"] %}
+      <div class="swatch">
+        <div class="swatch__chip swatch__chip--{{ name }}"></div>
+        <code>--{{ name }}</code>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-type">
+    <h2 id="g-type">Type</h2>
+    <p class="type-sample--2xl">32 Page title</p>
+    <p class="type-sample--xl">24 Section title</p>
+    <p class="type-sample--lg">20 Panel title</p>
+    <p class="type-sample--md">16 Body text. Left aligned, line length capped at 72 characters.</p>
+    <p class="type-sample--sm">14 Table text, labels and hints</p>
+    <p class="type-sample--xs">12 Captions and badges</p>
+    <p class="num">Tabular numbers: 1 234 567 · 98.42 % · 00:41:07</p>
+    <p><code>osu! id 1234567 · NM1 · https://osu.ppy.sh/community/matches/1</code></p>
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-icons">
+    <h2 id="g-icons">Icons</h2>
+    <p class="muted">Lucide subset. Always next to a text label unless the meaning is obvious.</p>
+    <div class="row">
+      {% for name in ["check", "x", "plus", "trash-2", "copy", "calendar", "clock", "info", "circle-check", "triangle-alert", "circle-alert", "chevron-down", "chevron-right", "log-out", "user", "external-link", "refresh-cw", "download", "upload"] %}
+      <span class="row">{{ icon(name) }}<code>{{ name }}</code></span>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-buttons">
+    <h2 id="g-buttons">Buttons</h2>
+    <p class="muted">One primary button per view.</p>
+    <div class="row">
+      {{ button("Save score", variant="primary", type="submit") }}
+      {{ button("Cancel", variant="secondary") }}
+      {{ button("Delete tournament", variant="danger") }}
+      {{ button("Show all scores", variant="text") }}
+    </div>
+    <div class="row">
+      {{ button("Import from wybin", variant="primary", icon_name="download") }}
+      {{ button("Refresh my scores", variant="secondary", icon_name="refresh-cw") }}
+      {{ button("Open on osu!", variant="secondary", icon_name="external-link", href="https://osu.ppy.sh/") }}
+    </div>
+    <p class="state-label">Disabled</p>
+    <div class="row">
+      {{ button("Save score", variant="primary", disabled=true) }}
+      {{ button("Cancel", variant="secondary", disabled=true) }}
+      {{ button("Delete tournament", variant="danger", disabled=true) }}
+      {{ button("Show all scores", variant="text", disabled=true) }}
+    </div>
+    <p class="state-label">Loading (shown while an htmx request runs)</p>
+    <div class="row htmx-request">
+      {{ button("Save score", variant="primary", disabled=true) }}
+      <span class="htmx-indicator muted" role="status">Loading…</span>
+    </div>
+    <p class="state-label">Copy button</p>
+    <div class="row">{{ copy_button("NM1 HD2 HR3 DT4 FM5 TB", label="Copy suggested lineup") }}</div>
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-fields">
+    <h2 id="g-fields">Form fields</h2>
+    <div class="stack">
+      {{ field("sg-score", "Score", kind="number", value="842113", required=true, hint="0 to 2 000 000 000") }}
+      {{ field("sg-acc", "Accuracy", kind="text", value="101", required=true, error="Accuracy must be between 0 and 100. Enter it as a percentage, for example 98.4.") }}
+      {{ field("sg-mods", "Mods", options=[("", "No mods"), ("HD", "HD"), ("HR", "HR"), ("DT", "DT")], value="HD") }}
+      {{ field("sg-note", "Note", kind="textarea", hint="Up to 2000 characters. Visible to you only unless shared with the team.") }}
+      {{ field("sg-locked", "Tournament", value="Archived tournament", required=true, disabled=true, hint="This tournament is archived. Unarchive it to edit.") }}
+    </div>
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-table">
+    <h2 id="g-table">Data table</h2>
+    <p class="muted">Sticky header and first column, numbers right-aligned, scrolls inside its own container.</p>
+    {% call table("Sample pool sheet") %}
+    <thead>
+      <tr>
+        <th scope="col">Map</th>
+        <th scope="col">Slot</th>
+        <th scope="col" class="is-numeric">Player A</th>
+        <th scope="col" class="is-numeric">Player B</th>
+        <th scope="col" class="is-numeric">Player C</th>
+        <th scope="col" class="is-numeric">Player D</th>
+        <th scope="col" class="is-numeric">Team average</th>
+        <th scope="col">Win chance</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for slot, title, scores, chance, won in [
+        ("NM1", "Sample map one [Hard]", (912004, 884310, 0, 801772), 61, true),
+        ("HD2", "Sample map two [Insane]", (845120, 0, 790331, 0), 48, false),
+        ("HR3", "Sample map three [Extra]", (701988, 695402, 688130, 0), 55, true),
+        ("DT4", "A very long sample map title that has to stay on one line [Another Very Long Difficulty Name]", (0, 0, 0, 0), 0, false)
+      ] %}
+      <tr>
+        <th scope="row">{{ title }}</th>
+        <td>{{ badge(slot) }}</td>
+        {% for score in scores %}
+        <td class="is-numeric">{{ "{:,}".format(score).replace(",", " ") if score else "—" }}</td>
+        {% endfor %}
+        {% set present = scores | select | list %}
+        <td class="is-numeric">{{ "{:,}".format((present | sum / present | length) | round | int).replace(",", " ") if present else "—" }}</td>
+        <td>
+          {% if chance %}
+          <span class="{{ 'result--win' if won else 'result--loss' }}">{{ "W" if won else "L" }} {{ chance }} %</span>
+          {% else %}
+          <span class="muted">No data</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-tabs">
+    <h2 id="g-tabs">Stage tabs, badges, pagination</h2>
+    {{ tabs("Stages", [("Qualifiers", "#qualifiers", false), ("Round of 16", "#ro16", true), ("Quarterfinals", "#qf", false)]) }}
+    <div class="row">
+      {{ badge("captain") }} {{ badge("co-captain") }} {{ badge("player") }} {{ badge("guest") }}
+      {{ badge("NM1") }} {{ badge("HD2") }} {{ badge("FM3") }} {{ badge("TB") }}
+    </div>
+    {{ pagination(1, 3, "#page") }}
+    {{ pagination(2, 3, "#page") }}
+    {{ pagination(3, 3, "#page") }}
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-alerts">
+    <h2 id="g-alerts">Alerts</h2>
+    {% call alert("info", "Scores are still being collected") %}Players you have not pulled yet show a dash. Use Refresh my scores to fetch them now.{% endcall %}
+    {% call alert("success", "Score saved") %}The sheet now includes it.{% endcall %}
+    {% call alert("warning", "The scanner is falling behind") %}Raise SCANNER_BUDGET_PER_MIN or expect skipped ranges.{% endcall %}
+    {% call alert("error", "wybin did not respond") %}Data shown is from {{ local_time("2026-11-12T18:30:00Z") }}. Try again later.{% endcall %}
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-states">
+    <h2 id="g-states">Empty, loading and disabled states</h2>
+    {% call empty_state("The pool for this stage is not published on wybin yet. It will appear here automatically.") %}
+    {{ button("Add a map manually", variant="secondary", icon_name="plus") }}
+    {% endcall %}
+    <p class="state-label">Loading</p>
+    <p class="muted" role="status">Loading…</p>
+    <p class="state-label">Archived tournament: write controls disabled with an explanation</p>
+    <div class="row">
+      <span title="This tournament is archived">{{ button("Save score", variant="primary", disabled=true) }}</span>
+      <span class="muted">This tournament is archived.</span>
+    </div>
+    <p class="state-label">Inline success next to the changed row</p>
+    <p class="row result--win">{{ icon("check") }}<span>Saved</span></p>
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-avail">
+    <h2 id="g-avail">Availability cell and times</h2>
+    <p class="muted">Press Space or Enter on a cell to change its state.</p>
+    <div class="row">
+      {{ availability_cell("yes") }}
+      {{ availability_cell("maybe") }}
+      {{ availability_cell("no") }}
+      {{ availability_cell("yes", disabled=true) }}
+    </div>
+    <p>Next match in {{ countdown("2030-01-01T20:00:00Z") }} · <span class="muted">local time:</span> {{ local_time("2030-01-01T20:00:00Z") }}</p>
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-dialog">
+    <h2 id="g-dialog">Dialog</h2>
+    <div class="row">
+      {{ button("Delete tournament", variant="danger", icon_name="trash-2", data_dialog_open="sg-dialog") }}
+    </div>
+    {% call dialog("sg-dialog", "Delete this tournament?", "Delete tournament", danger=true) %}
+    <p>This removes the tournament, its pool and its scores for every member. It cannot be undone.</p>
+    {% endcall %}
+  </section>
+
+</div>
+{% endblock %}

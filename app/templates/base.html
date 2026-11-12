@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false}'>
+  <title>{% block title %}{% endblock %}osu! tourney hub</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/css/tokens.css?v={{ app_version }}">
+  <link rel="stylesheet" href="/static/css/app.css?v={{ app_version }}">
+  <script src="/static/js/htmx.min.js?v={{ app_version }}" defer></script>
+  <script src="/static/js/htmx-ext-sse.js?v={{ app_version }}" defer></script>
+  <script src="/static/js/app.js?v={{ app_version }}" defer></script>
+</head>
+<body>
+  {% block body %}{% endblock %}
+</body>
+</html>

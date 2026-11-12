@@ -1,0 +1,12 @@
+{#- kind: info | success | warning | error. The body says what happened and how to recover. -#}
+{% from "components/icon.html" import icon %}
+{% set alert_icons = {"info": "info", "success": "circle-check", "warning": "triangle-alert", "error": "circle-alert"} %}
+{% macro alert(kind, title) -%}
+<div class="alert alert--{{ kind }}" role="{{ 'alert' if kind == 'error' else 'status' }}">
+  {{ icon(alert_icons[kind]) }}
+  <div>
+    <div class="alert__title">{{ title }}</div>
+    <div>{{ caller() }}</div>
+  </div>
+</div>
+{%- endmacro %}

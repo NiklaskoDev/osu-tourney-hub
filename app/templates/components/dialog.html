@@ -1,0 +1,14 @@
+{#- Native <dialog>: Esc closes it and focus stays inside while it is open. Open it with a button
+    carrying data-dialog-open="<id>". The buttons submit method="dialog", so closing needs no script. -#}
+{% macro dialog(id, title, confirm_label, danger=false, cancel_label="Cancel") -%}
+<dialog class="dialog" id="{{ id }}" aria-labelledby="{{ id }}-title">
+  <form method="dialog" class="stack">
+    <h2 id="{{ id }}-title">{{ title }}</h2>
+    {{ caller() }}
+    <div class="dialog__actions">
+      <button class="btn btn--secondary" type="submit" value="cancel"><span>{{ cancel_label }}</span></button>
+      <button class="btn btn--{{ 'danger' if danger else 'primary' }}" type="submit" value="confirm"><span>{{ confirm_label }}</span></button>
+    </div>
+  </form>
+</dialog>
+{%- endmacro %}

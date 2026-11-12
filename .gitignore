@@ -1,0 +1,47 @@
+# Secrets - never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials*.json
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+out/
+target/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+coverage/
+.coverage
+
+# Local data
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Editor / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Python packaging
+*.egg-info/
+
+# Local preview config (machine-specific paths)
+.claude/launch.json

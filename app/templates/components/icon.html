@@ -1,0 +1,4 @@
+{#- Lucide icon from the vendored sprite. Decorative: pair it with a text label. -#}
+{% macro icon(name) -%}
+<svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons/sprite.svg#{{ name }}"></use></svg>
+{%- endmacro %}

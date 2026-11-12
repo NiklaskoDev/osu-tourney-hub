@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!-- Skeleton for unraid/<app>.xml. Replace every APP, OWNER and REPO, then delete this comment.
+     One Config entry per port, volume and variable. Never put a real secret in this file. -->
+<Container version="2">
+  <Name>APP</Name>
+  <Repository>ghcr.io/OWNER/REPO:latest</Repository>
+  <Registry>https://github.com/OWNER/REPO/pkgs/container/REPO</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/OWNER/REPO/issues</Support>
+  <Project>https://github.com/OWNER/REPO</Project>
+  <Overview>One or two plain sentences on what APP does.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/OWNER/REPO/main/unraid/APP.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/OWNER/REPO/main/unraid/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Web port" Target="8080" Default="8080" Mode="tcp" Description="Port of the web interface." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/APP" Mode="rw" Description="Persistent application data." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/APP</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User the container writes files as." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group the container writes files as." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="Example secret" Target="EXAMPLE_SECRET" Default="" Mode="" Description="What it is for and where to get it." Type="Variable" Display="always" Required="true" Mask="true"/>
+</Container>

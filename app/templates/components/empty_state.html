@@ -1,0 +1,7 @@
+{#- One sentence and, when there is a next step, an action passed through the caller. -#}
+{% macro empty_state(text) -%}
+<div class="empty">
+  <p>{{ text }}</p>
+  {%- if caller %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}

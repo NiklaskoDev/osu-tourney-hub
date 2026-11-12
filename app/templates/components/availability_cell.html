@@ -1,0 +1,7 @@
+{#- state: yes | maybe | no. Shown as pattern plus text, never colour alone. -#}
+{% set availability_labels = {"yes": "Yes", "maybe": "Maybe", "no": "No"} %}
+{% macro availability_cell(state, disabled=false) -%}
+<button class="avail" type="button" data-state="{{ state }}" data-cycle-state{% if disabled %} disabled{% endif %}>
+  <span data-avail-label>{{ availability_labels[state] }}</span>
+</button>
+{%- endmacro %}

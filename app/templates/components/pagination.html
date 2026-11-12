@@ -1,0 +1,9 @@
+{#- Links are <base_url>?page=N. On the first and last page the missing direction is disabled. -#}
+{% from "components/button.html" import button %}
+{% macro pagination(page, pages, base_url) -%}
+<nav class="pagination" aria-label="Pagination">
+  {{ button("Previous", href=(base_url ~ "?page=" ~ (page - 1)), disabled=(page <= 1)) }}
+  <span class="num">Page {{ page }} of {{ pages }}</span>
+  {{ button("Next", href=(base_url ~ "?page=" ~ (page + 1)), disabled=(page >= pages)) }}
+</nav>
+{%- endmacro %}

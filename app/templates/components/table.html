@@ -1,0 +1,10 @@
+{#- Data table wrapper. The caller supplies <thead> and <tbody>. The scroll region is focusable
+    so keyboard users can scroll it. Numeric cells use class="is-numeric". -#}
+{% macro table(caption) -%}
+<div class="table-wrap" role="region" aria-label="{{ caption }}" tabindex="0">
+  <table class="table">
+    <caption class="visually-hidden">{{ caption }}</caption>
+    {{ caller() }}
+  </table>
+</div>
+{%- endmacro %}

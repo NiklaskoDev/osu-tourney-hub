@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>osu-tourney-hub</Name>
+  <Repository>ghcr.io/niklaskodev/osu-tourney-hub:latest</Repository>
+  <Registry>https://github.com/NiklaskoDev/osu-tourney-hub/pkgs/container/osu-tourney-hub</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/NiklaskoDev/osu-tourney-hub/issues</Support>
+  <Project>https://github.com/NiklaskoDev/osu-tourney-hub</Project>
+  <Overview>Self-hosted website for an osu! tournament team: osu! login, wybin import, mappool sheets with scores, lineups, availability, match lobby skimmer and matchup predictions. Needs an osu! OAuth application and an HTTPS reverse proxy.</Overview>
+  <Category>Tools: Other:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/NiklaskoDev/osu-tourney-hub/main/unraid/osu-tourney-hub.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/NiklaskoDev/osu-tourney-hub/main/unraid/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+  <Config Name="Web port" Target="8080" Default="8080" Mode="tcp" Description="Port of the web interface." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/osu-tourney-hub" Mode="rw" Description="Persistent application data (the database). Include it in your appdata backup." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/osu-tourney-hub</Config>
+  <Config Name="osu! client ID" Target="OSU_CLIENT_ID" Default="" Mode="" Description="Client ID of your osu! OAuth application." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="osu! client secret" Target="OSU_CLIENT_SECRET" Default="" Mode="" Description="Client secret of your osu! OAuth application." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Public URL" Target="PUBLIC_URL" Default="" Mode="" Description="Public https address of this site without a path, for example https://tourney.example.com. The OAuth callback URL is this address plus /auth/callback." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Session secret" Target="SESSION_SECRET" Default="" Mode="" Description="At least 32 random characters. Keep it secret; changing it logs everyone out." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Admin osu! IDs" Target="ADMIN_OSU_IDS" Default="" Mode="" Description="osu! user ids of the administrators, comma-separated." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User the container writes files as." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group the container writes files as." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="osu! API requests per minute" Target="OSU_API_RATE_PER_MIN" Default="60" Mode="" Description="Overall osu! API request budget per minute. The osu! guidance is at most 60." Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
+  <Config Name="wybin poll minutes" Target="WYBIN_POLL_MINUTES" Default="30" Mode="" Description="Minutes between wybin syncs of active tournaments (minimum 10)." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="Scanner enabled" Target="SCANNER_ENABLED" Default="true" Mode="" Description="Scan new osu! multiplayer lobbies for maps of the current mappools." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="Scanner budget per minute" Target="SCANNER_BUDGET_PER_MIN" Default="30" Mode="" Description="osu! requests per minute the scanner may use. Must be lower than the overall request budget." Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+  <Config Name="Scanner workers" Target="SCANNER_WORKERS" Default="4" Mode="" Description="Parallel scanner tasks (1 to 8). They share the scanner budget." Type="Variable" Display="advanced" Required="false" Mask="false">4</Config>
+  <Config Name="Scanner max backlog" Target="SCANNER_MAX_BACKLOG" Default="5000" Mode="" Description="Lobby ids the scanner may fall behind before it skips ahead." Type="Variable" Display="advanced" Required="false" Mask="false">5000</Config>
+  <Config Name="Scanner open lobby hours" Target="SCANNER_OPEN_MAX_HOURS" Default="24" Mode="" Description="Hours after which a still-open lobby is finalised." Type="Variable" Display="advanced" Required="false" Mask="false">24</Config>
+  <Config Name="Score refresh hours" Target="CAPTURE_REFRESH_HOURS" Default="24" Mode="" Description="Hours before a player's score on a map is fetched again." Type="Variable" Display="advanced" Required="false" Mask="false">24</Config>
+  <Config Name="Live poll seconds" Target="LIVE_POLL_SECONDS" Default="10" Mode="" Description="Seconds between polls during live match mode (minimum 5)." Type="Variable" Display="advanced" Required="false" Mask="false">10</Config>
+  <Config Name="Log level" Target="LOG_LEVEL" Default="info" Mode="" Description="debug, info, warning, error or critical." Type="Variable" Display="advanced" Required="false" Mask="false">info</Config>
+  <Config Name="AI provider" Target="AI_PROVIDER" Default="" Mode="" Description="Provider for optional AI predictions. Empty keeps them off." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="AI API key" Target="AI_API_KEY" Default="" Mode="" Description="API key of the AI provider (not needed for a local endpoint)." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="AI model" Target="AI_MODEL" Default="" Mode="" Description="Model name to use. Required when an AI provider is set." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="AI base URL" Target="AI_BASE_URL" Default="" Mode="" Description="Only for an OpenAI-compatible or local endpoint." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

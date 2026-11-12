@@ -1,0 +1,13 @@
+{#- variant: primary | secondary | danger | text. One primary button per view.
+    href turns it into a link. Extra keyword arguments become attributes (data_copy -> data-copy). -#}
+{% from "components/icon.html" import icon %}
+{% macro button(label, variant="secondary", type="button", icon_name=none, href=none, disabled=false) -%}
+{%- set extra -%}
+  {%- for key, value in kwargs.items() %} {{ key|replace("_", "-") }}="{{ value }}"{% endfor -%}
+{%- endset -%}
+{% if href and not disabled -%}
+<a class="btn btn--{{ variant }}" href="{{ href }}"{{ extra }}>{% if icon_name %}{{ icon(icon_name) }}{% endif %}<span>{{ label }}</span></a>
+{%- else -%}
+<button class="btn btn--{{ variant }}" type="{{ type }}"{% if disabled %} disabled{% endif %}{{ extra }}>{% if icon_name %}{{ icon(icon_name) }}{% endif %}<span>{{ label }}</span></button>
+{%- endif %}
+{%- endmacro %}

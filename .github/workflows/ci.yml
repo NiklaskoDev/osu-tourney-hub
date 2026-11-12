@@ -1,0 +1,126 @@
+name: CI
+
+# Lint, test, build. Detects the stack from files in the repo root.
+# Delete the blocks you do not need; adjust commands to match CLAUDE.md.
+# Any other stack (C/C++, mobile, game engines, ...): put the commands in scripts/ci.sh.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail if no known stack is present
+        if: hashFiles('package.json', 'pyproject.toml', 'requirements.txt', 'go.mod', 'Cargo.toml', '*.sln', '*.slnx', '*.csproj', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'Dockerfile', 'scripts/ci.sh') == ''
+        run: |
+          echo "::error::No supported project file found. Add your stack's steps to ci.yml or create scripts/ci.sh."
+          exit 1
+
+      # ---------- Node (npm; change the commands for pnpm/yarn/bun) ----------
+      - name: Set up Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+      - name: Node - install, lint, test, build
+        if: hashFiles('package.json') != ''
+        run: |
+          npm ci
+          npm run lint --if-present
+          npm run test --if-present
+          npm run build --if-present
+
+      # ---------- Python (pytest fails when no tests exist - intended) ----------
+      - name: Set up Python
+        if: hashFiles('pyproject.toml', 'requirements.txt') != ''
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Python - install, lint, test
+        if: hashFiles('pyproject.toml', 'requirements.txt') != ''
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e .
+          ruff check .
+          ruff format --check .
+          pytest
+
+      # ---------- Go ----------
+      - name: Set up Go
+        if: hashFiles('go.mod') != ''
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Go - vet, test, build
+        if: hashFiles('go.mod') != ''
+        run: |
+          go vet ./...
+          go test ./...
+          go build ./...
+
+      # ---------- Rust ----------
+      - name: Rust - fmt, clippy, test
+        if: hashFiles('Cargo.toml') != ''
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+      # ---------- .NET (solution or project file in the repo root) ----------
+      - name: .NET - format check, build, test
+        if: hashFiles('*.sln', '*.slnx', '*.csproj') != ''
+        run: |
+          dotnet restore
+          dotnet format --verify-no-changes --no-restore
+          dotnet build --configuration Release --no-restore
+          dotnet test --configuration Release --no-build
+
+      # ---------- Java / Kotlin ----------
+      - name: Set up Java
+        if: hashFiles('pom.xml', 'build.gradle', 'build.gradle.kts') != ''
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Maven - verify
+        if: hashFiles('pom.xml') != ''
+        run: mvn --batch-mode verify
+      - name: Gradle - build
+        if: hashFiles('build.gradle', 'build.gradle.kts') != ''
+        run: |
+          if [ -f gradlew ]; then chmod +x gradlew && ./gradlew build; else gradle build; fi
+
+      # ---------- Container image (see docs/ai/docker.md) ----------
+      - name: Docker - build from a clean checkout
+        if: hashFiles('Dockerfile') != ''
+        run: docker build -t ci-image .
+      - name: Unraid - templates are well-formed
+        if: hashFiles('unraid/*.xml') != ''
+        run: |
+          for f in unraid/*.xml; do
+            python3 -c "import sys, xml.dom.minidom as m; m.parse(sys.argv[1])" "$f"
+            if grep -qE 'OWNER/REPO|>APP<|appdata/APP<' "$f"; then
+              echo "::error file=$f::Template still contains skeleton placeholders"
+              exit 1
+            fi
+          done
+
+      # ---------- Anything else ----------
+      - name: Custom - scripts/ci.sh
+        if: hashFiles('scripts/ci.sh') != ''
+        run: bash scripts/ci.sh

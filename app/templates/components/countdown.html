@@ -1,0 +1,8 @@
+{#- iso is a UTC timestamp. app.js renders the countdown and the viewer's local time. -#}
+{% macro countdown(iso) -%}
+<time class="countdown" data-countdown datetime="{{ iso }}">{{ iso }}</time>
+{%- endmacro %}
+
+{% macro local_time(iso) -%}
+<time data-local datetime="{{ iso }}">{{ iso }}</time>
+{%- endmacro %}

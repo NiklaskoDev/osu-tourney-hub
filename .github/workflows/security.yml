@@ -1,0 +1,38 @@
+name: Security
+
+# Secret scan on every push/PR and weekly; dependency review on PRs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 5 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Free for personal accounts; organisations need a GITLEAKS_LICENSE secret.
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  dependencies:
+    # Dependency review is free on public repos only, so this job skips itself on private ones.
+    # Private repos: enable Dependabot alerts in the repo settings instead (free).
+    if: github.event_name == 'pull_request' && !github.event.repository.private
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

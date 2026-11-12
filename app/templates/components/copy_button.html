@@ -1,0 +1,8 @@
+{#- Copies `text` to the clipboard; app.js swaps the label to "Copied" for two seconds. -#}
+{% from "components/icon.html" import icon %}
+{% macro copy_button(text, label="Copy") -%}
+<button class="btn btn--secondary" type="button" data-copy="{{ text }}" data-copied-label="Copied">
+  {{ icon("copy") }}
+  <span data-copy-label>{{ label }}</span>
+</button>
+{%- endmacro %}

@@ -1,0 +1,82 @@
+/* Design tokens. Values are the approved design system (plan 001, "UI"). */
+
+:root {
+  color-scheme: light dark;
+
+  /* Neutrals */
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #efefec;
+  --border: #dadad5;
+  --text: #1e1f22;
+  --text-muted: #5b5d63;
+
+  /* Accent: actions, focus and current selection only */
+  --accent: #b0285f;
+  --accent-contrast: #ffffff;
+
+  /* State: always paired with a text label or an icon */
+  --success: #2d7a4b;
+  --warning: #9a5b00;
+  --danger: #b3261e;
+  --on-danger: #ffffff;
+
+  /* Type */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --weight-normal: 400;
+  --weight-strong: 600;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Shape */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.18);
+
+  /* Layout */
+  --max-table: 1280px;
+  --max-text: 72ch;
+  --target-min: 44px;
+
+  /* Motion */
+  --motion: 150ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181b;
+    --surface: #1f2024;
+    --surface-2: #26282d;
+    --border: #34363c;
+    --text: #e8e8e6;
+    --text-muted: #a3a5ab;
+    --accent: #e46a9a;
+    /* The plan lists white here, but white on this pink is only 3.1:1; dark text gives 5.8:1. */
+    --accent-contrast: #17181b;
+    --success: #5dbb83;
+    --warning: #e0a447;
+    --danger: #ef7a72;
+    --on-danger: #17181b;
+    --shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion: 0ms;
+  }
+}

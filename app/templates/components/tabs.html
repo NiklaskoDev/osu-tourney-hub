@@ -1,0 +1,8 @@
+{#- items = [(label, href, is_current), ...] -#}
+{% macro tabs(label, items) -%}
+<nav class="tabs" aria-label="{{ label }}">
+  {%- for item_label, href, is_current in items %}
+  <a class="tabs__tab" href="{{ href }}"{% if is_current %} aria-current="page"{% endif %}>{{ item_label }}</a>
+  {%- endfor %}
+</nav>
+{%- endmacro %}

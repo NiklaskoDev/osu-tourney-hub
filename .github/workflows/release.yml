@@ -1,0 +1,98 @@
+name: Release
+
+# Runs when a version tag is pushed: vMAJOR.MINOR.HOTFIX or vMAJOR.MINOR.HOTFIX-prN
+# Pushing the tag IS the release decision - only the programmer (or the AI on
+# explicit instruction) pushes tags. See docs/ai/versioning.md.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-pr[0-9]+'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tag
+        id: tag
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-pr[1-9][0-9]*)?$ ]]; then
+            echo "::error::Tag '$TAG' is not vMAJOR.MINOR.HOTFIX[-prN]"
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *-pr* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check version file
+        run: test "$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")" = "${{ steps.tag.outputs.version }}"
+
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          touch notes.md
+          if [ -f CHANGELOG.md ]; then
+            awk -v h="## [$VERSION]" '
+              index($0, "## [") == 1 { p = (index($0, h) == 1); next }
+              p
+            ' CHANGELOG.md > notes.md
+          fi
+
+      # Other build and publish steps go here (packages, binaries, deploy).
+      # Attach files by appending their paths to the `gh release create` command.
+
+      # Container image: only when the repo has a Dockerfile. See docs/ai/docker.md.
+      # Pushes ghcr.io/<owner>/<repo>:<version>; final releases also move :latest.
+      - name: Build and push container image
+        if: hashFiles('Dockerfile') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.tag.outputs.version }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            -t "$IMAGE:$VERSION" .
+          docker push "$IMAGE:$VERSION"
+          if [ "$PRERELEASE" != "true" ]; then
+            docker tag "$IMAGE:$VERSION" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          ARGS=(--verify-tag --title "$TAG")
+          if [ "$PRERELEASE" = "true" ]; then ARGS+=(--prerelease); fi
+          if grep -q '[^[:space:]]' notes.md; then
+            ARGS+=(--notes-file notes.md)
+          else
+            ARGS+=(--generate-notes)
+          fi
+          gh release create "$TAG" "${ARGS[@]}"

@@ -1,0 +1,24 @@
+{#- Label, control, hint and inline error. options = [(value, label), ...] makes a select;
+    kind "textarea" makes a textarea. The entered value is kept when an error is shown. -#}
+{% from "components/icon.html" import icon %}
+{% macro field(name, label, kind="text", value="", hint=none, error=none, required=false, disabled=false, options=none, placeholder="") -%}
+{%- set describedby -%}
+  {%- if error %}{{ name }}-error{% elif hint %}{{ name }}-hint{% endif -%}
+{%- endset -%}
+<div class="field{% if error %} field--invalid{% endif %}">
+  <label class="field__label" for="{{ name }}">{{ label }}{% if not required %} <span class="muted">(optional)</span>{% endif %}</label>
+  {% if options is not none -%}
+  <select class="field__control" id="{{ name }}" name="{{ name }}"{% if required %} required{% endif %}{% if disabled %} disabled{% endif %}{% if describedby %} aria-describedby="{{ describedby }}"{% endif %}{% if error %} aria-invalid="true"{% endif %}>
+    {%- for option_value, option_label in options %}
+    <option value="{{ option_value }}"{% if option_value == value %} selected{% endif %}>{{ option_label }}</option>
+    {%- endfor %}
+  </select>
+  {%- elif kind == "textarea" -%}
+  <textarea class="field__control" id="{{ name }}" name="{{ name }}" placeholder="{{ placeholder }}"{% if required %} required{% endif %}{% if disabled %} disabled{% endif %}{% if describedby %} aria-describedby="{{ describedby }}"{% endif %}{% if error %} aria-invalid="true"{% endif %}>{{ value }}</textarea>
+  {%- else -%}
+  <input class="field__control" id="{{ name }}" name="{{ name }}" type="{{ kind }}" value="{{ value }}" placeholder="{{ placeholder }}"{% if required %} required{% endif %}{% if disabled %} disabled{% endif %}{% if describedby %} aria-describedby="{{ describedby }}"{% endif %}{% if error %} aria-invalid="true"{% endif %}>
+  {%- endif %}
+  {% if hint and not error %}<span class="field__hint" id="{{ name }}-hint">{{ hint }}</span>{% endif %}
+  {% if error %}<span class="field__error" id="{{ name }}-error">{{ icon("circle-alert") }}<span>{{ error }}</span></span>{% endif %}
+</div>
+{%- endmacro %}
