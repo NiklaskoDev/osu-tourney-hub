@@ -1,0 +1,13 @@
+{#- A labelled checkbox. Extra keyword arguments become attributes (form -> form="...").
+    The 44 px target covers the whole label, so the box itself can stay small.
+    label_hidden keeps the text for screen readers when the column header already says it. -#}
+{% macro checkbox(name, label, checked=false, disabled=false, id=none, label_hidden=false) -%}
+{%- set control_id = id or name -%}
+{%- set extra -%}
+  {%- for key, attr_value in kwargs.items() %} {{ key|replace("_", "-") }}="{{ attr_value }}"{% endfor -%}
+{%- endset -%}
+<label class="check" for="{{ control_id }}">
+  <input class="check__box" type="checkbox" id="{{ control_id }}" name="{{ name }}" value="1"{% if checked %} checked{% endif %}{% if disabled %} disabled{% endif %}{{ extra }}>
+  <span{% if label_hidden %} class="visually-hidden"{% endif %}>{{ label }}</span>
+</label>
+{%- endmacro %}

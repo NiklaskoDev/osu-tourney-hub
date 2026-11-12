@@ -1,0 +1,65 @@
+{% extends "layout/shell.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/button.html" import button %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/dialog.html" import dialog %}
+{% from "components/field.html" import field %}
+{% block title %}Your profile - {% endblock %}
+{% block content %}
+<div class="page__header">
+  <h1>Your profile</h1>
+</div>
+
+<div class="stack sections">
+
+  <section class="stack" aria-labelledby="profile">
+    <h2 id="profile">osu! account</h2>
+    <dl class="facts">
+      <div><dt>Username</dt><dd>{{ me.username }}</dd></div>
+      <div><dt>osu! user id</dt><dd class="mono">{{ me.osu_id }}</dd></div>
+      {% if me.country %}<div><dt>Country</dt><dd>{{ me.country }}</dd></div>{% endif %}
+    </dl>
+    <p class="muted">These come from your public osu! profile and refresh each time you log in.</p>
+  </section>
+
+  <section class="stack" aria-labelledby="timezone-heading">
+    <h2 id="timezone-heading">Timezone</h2>
+    <form class="stack" method="post" action="/me/timezone">
+      {{ csrf_field(csrf_token) }}
+      {{ field("timezone", "Your timezone", options=timezone_options, value=me.timezone or "", error=timezone_error, required=true, hint="Match times and availability are shown in this timezone when you pick local time. If none is saved, your browser suggests one; choose Save timezone to keep it.", data_detect_timezone="1") }}
+      <div>{{ button("Save timezone", variant="secondary", type="submit") }}</div>
+    </form>
+  </section>
+
+  <section class="stack" aria-labelledby="sessions">
+    <h2 id="sessions">Sessions</h2>
+    <p class="muted">Logging out here ends this browser's session. Use the button below if you were logged in on a device you no longer control; every session, including this one, ends.</p>
+    <form method="post" action="/me/logout-all">
+      {{ csrf_field(csrf_token) }}
+      {{ button("Log out everywhere", variant="secondary", type="submit", icon_name="log-out") }}
+    </form>
+  </section>
+
+  <section class="stack" aria-labelledby="data">
+    <h2 id="data">Your data</h2>
+    <p>The hub stores your osu! profile, your timezone and your roster entries in tournaments. It does not store osu! tokens, emails or passwords.</p>
+    <div class="row">
+      {{ button("Download my data", variant="secondary", href="/me/export", icon_name="download") }}
+    </div>
+    {% if recent_login %}
+    <div class="row">
+      {{ button("Delete my data", variant="danger", icon_name="trash-2", data_dialog_open="delete-data") }}
+    </div>
+    {% call dialog("delete-data", "Delete all your data?", "Delete my data", danger=true, action="/me/delete", csrf=csrf_token) %}
+    <p>This deletes your profile, your roster entries in every tournament and your calendar feed tokens, and logs you out everywhere. Your public osu! data is not affected. It cannot be undone.</p>
+    {% endcall %}
+    {% else %}
+    {% call alert("warning", "Log in again to delete your data") %}Deleting everything needs a login from the last five minutes. After you log in you return to this page.{% endcall %}
+    <div class="row">
+      {{ button("Log in again", variant="secondary", href="/auth/login?next=/me", icon_name="user") }}
+    </div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

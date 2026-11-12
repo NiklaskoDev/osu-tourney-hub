@@ -24,7 +24,6 @@ def test_defaults_apply_for_optional_variables(valid_env):
 
     assert settings.data_dir == Path("/data")
     assert settings.log_level == "info"
-    assert settings.styleguide_preview is False
 
 
 def test_from_env_reads_the_process_environment_by_default(valid_env, monkeypatch):
@@ -167,19 +166,22 @@ def test_log_level_is_case_insensitive_and_validated(valid_env):
     assert list(caught.value.invalid) == ["LOG_LEVEL"]
 
 
-@pytest.mark.parametrize(
-    ("raw", "expected"), [("true", True), ("1", True), ("False", False), ("", False)]
-)
-def test_styleguide_preview_flag(valid_env, raw, expected):
-    valid_env["STYLEGUIDE_PREVIEW"] = raw
-
-    assert Settings.from_env(valid_env).styleguide_preview is expected
+def test_osu_api_rate_defaults_to_the_maximum(valid_env):
+    assert Settings.from_env(valid_env).osu_api_rate_per_min == 60
 
 
-def test_styleguide_preview_rejects_unknown_value(valid_env):
-    valid_env["STYLEGUIDE_PREVIEW"] = "maybe"
+@pytest.mark.parametrize(("raw", "expected"), [("1", 1), ("30", 30), (" 60 ", 60), ("", 60)])
+def test_osu_api_rate_is_read_from_the_environment(valid_env, raw, expected):
+    valid_env["OSU_API_RATE_PER_MIN"] = raw
+
+    assert Settings.from_env(valid_env).osu_api_rate_per_min == expected
+
+
+@pytest.mark.parametrize("raw", ["0", "61", "-1", "fast", "30.5", "١٢"])
+def test_osu_api_rate_outside_1_to_60_is_rejected(valid_env, raw):
+    valid_env["OSU_API_RATE_PER_MIN"] = raw
 
     with pytest.raises(ConfigError) as caught:
         Settings.from_env(valid_env)
 
-    assert list(caught.value.invalid) == ["STYLEGUIDE_PREVIEW"]
+    assert list(caught.value.invalid) == ["OSU_API_RATE_PER_MIN"]

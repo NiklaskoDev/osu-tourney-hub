@@ -13,7 +13,7 @@ def test_startup_creates_data_dir_and_migrates_database(client, settings):
     assert settings.db_path.exists()
     with closing(open_db(settings.db_path)) as conn:
         versions = [row["version"] for row in conn.execute("SELECT version FROM schema_migrations")]
-    assert versions == [1]
+    assert versions == [1, 2]
 
 
 def test_startup_refuses_a_database_from_a_newer_version(settings, clock):

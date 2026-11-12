@@ -1,10 +1,33 @@
 {% extends "base.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/csrf.html" import csrf_field %}
 {% block body %}
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="topbar">
-    <span class="topbar__brand">osu! tourney hub</span>
+    <a class="topbar__brand" href="/">osu! tourney hub</a>
+    {% if user %}
+    <nav class="topbar__nav" aria-label="Main">
+      <a href="/">Tournaments</a>
+      {% if is_admin %}<a href="/styleguide">Styleguide</a>{% endif %}
+    </nav>
+    <div class="topbar__user">
+      {% if user.avatar_url %}<img class="avatar" src="{{ user.avatar_url }}" alt="" width="28" height="28">{% endif %}
+      <a href="/me">{{ user.username }}</a>
+      <form method="post" action="/auth/logout">
+        {{ csrf_field(csrf_token) }}
+        <button class="btn btn--text" type="submit"><span>Log out</span></button>
+      </form>
+    </div>
+    {% endif %}
   </header>
   <main id="main" class="page">
+    {% if flashes %}
+    <div class="stack flashes">
+      {% for message in flashes %}
+        {% call alert("error" if message.kind == "error" else ("success" if message.kind == "success" else "info"), message.text) %}{% endcall %}
+      {% endfor %}
+    </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 {% endblock %}

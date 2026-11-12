@@ -20,8 +20,8 @@ MIN_SESSION_SECRET_LENGTH = 32
 DEFAULT_DATA_DIR = "/data"
 DEFAULT_LOG_LEVEL = "info"
 LOG_LEVELS = ("debug", "info", "warning", "error", "critical")
-TRUE_VALUES = ("1", "true", "yes", "on")
-FALSE_VALUES = ("", "0", "false", "no", "off")
+# osu! asks API users to stay under 60 requests per minute, so this is also the ceiling.
+MAX_OSU_API_RATE_PER_MIN = 60
 
 
 class ConfigError(Exception):
@@ -49,8 +49,7 @@ class Settings:
     admin_osu_ids: frozenset[int]
     data_dir: Path
     log_level: str
-    # Phase 0 only: serves /styleguide before login exists. Replaced by the admin check in phase 1.
-    styleguide_preview: bool
+    osu_api_rate_per_min: int
 
     @property
     def db_path(self) -> Path:
@@ -87,9 +86,11 @@ class Settings:
         if log_level not in LOG_LEVELS:
             invalid["LOG_LEVEL"] = "must be one of " + ", ".join(LOG_LEVELS)
 
-        styleguide_preview = _parse_flag(environ.get("STYLEGUIDE_PREVIEW", ""))
-        if styleguide_preview is None:
-            invalid["STYLEGUIDE_PREVIEW"] = "must be true or false"
+        osu_api_rate = _parse_rate(environ.get("OSU_API_RATE_PER_MIN", ""))
+        if osu_api_rate is None:
+            invalid["OSU_API_RATE_PER_MIN"] = (
+                f"must be a number from 1 to {MAX_OSU_API_RATE_PER_MIN}"
+            )
 
         if missing or invalid:
             raise ConfigError(missing, invalid)
@@ -102,7 +103,7 @@ class Settings:
             admin_osu_ids=admin_ids,
             data_dir=Path(environ.get("DATA_DIR", "").strip() or DEFAULT_DATA_DIR),
             log_level=log_level,
-            styleguide_preview=bool(styleguide_preview),
+            osu_api_rate_per_min=osu_api_rate,
         )
 
 
@@ -130,10 +131,12 @@ def _parse_admin_ids(raw: str) -> frozenset[int] | None:
     return None if 0 in ids else ids
 
 
-def _parse_flag(raw: str) -> bool | None:
-    value = raw.strip().lower()
-    if value in TRUE_VALUES:
-        return True
-    if value in FALSE_VALUES:
-        return False
-    return None
+def _parse_rate(raw: str) -> int | None:
+    """Empty means the default (the maximum); otherwise a whole number from 1 to the maximum."""
+    value = raw.strip()
+    if not value:
+        return MAX_OSU_API_RATE_PER_MIN
+    if not (value.isascii() and value.isdecimal()):
+        return None
+    rate = int(value)
+    return rate if 1 <= rate <= MAX_OSU_API_RATE_PER_MIN else None

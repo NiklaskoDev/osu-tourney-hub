@@ -1,0 +1,4 @@
+{#- Hidden field with the session's CSRF token. Put it in every form that posts. -#}
+{% macro csrf_field(token) -%}
+<input type="hidden" name="csrf_token" value="{{ token }}">
+{%- endmacro %}

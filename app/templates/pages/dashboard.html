@@ -1,0 +1,35 @@
+{% extends "layout/shell.html" %}
+{% from "components/table.html" import table %}
+{% from "components/badge.html" import badge %}
+{% from "components/empty_state.html" import empty_state %}
+{% block title %}Tournaments - {% endblock %}
+{% block content %}
+<div class="page__header">
+  <h1>Tournaments</h1>
+  {% if viewer_is_admin %}<p class="muted">You are an administrator, so you see every tournament.</p>{% endif %}
+</div>
+{% if rows %}
+{% call table("Tournaments") %}
+<thead>
+  <tr>
+    <th scope="col">Tournament</th>
+    <th scope="col">Your role</th>
+    <th scope="col">Status</th>
+  </tr>
+</thead>
+<tbody>
+  {% for row in rows %}
+  <tr>
+    <th scope="row"><a href="/t/{{ row.tournament.id }}">{{ row.tournament.name }}</a>{% if row.tournament.acronym %} <span class="muted">{{ row.tournament.acronym }}</span>{% endif %}</th>
+    <td>{{ badge(row.role) }}</td>
+    <td>{{ row.tournament.status|capitalize }}</td>
+  </tr>
+  {% endfor %}
+</tbody>
+{% endcall %}
+{% elif viewer_is_admin %}
+{{ empty_state("No tournaments exist yet.") }}
+{% else %}
+{{ empty_state("You are not on a tournament roster yet. A captain or an administrator adds you when your team's tournament is set up.") }}
+{% endif %}
+{% endblock %}

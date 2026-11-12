@@ -1,0 +1,29 @@
+{% extends "layout/shell.html" %}
+{#- Tournament pages: left nav on wide screens, a select below 768 px. `nav_current` names the
+    open section. Later phases add their entries to `items`. -#}
+{% set items = [
+  ("overview", "Overview", "/t/" ~ tournament.id),
+  ("members", "Members", "/t/" ~ tournament.id ~ "/members"),
+] %}
+{% block content %}
+<div class="tournament-layout">
+  <nav class="side-nav" aria-label="{{ tournament.name }}">
+    <ul class="side-nav__list">
+      {% for key, label, href in items %}
+      <li><a class="side-nav__link" href="{{ href }}"{% if key == nav_current %} aria-current="page"{% endif %}>{{ label }}</a></li>
+      {% endfor %}
+    </ul>
+    <div class="side-nav__select">
+      <label class="visually-hidden" for="section-select">Section</label>
+      <select class="field__control" id="section-select" data-nav-select>
+        {% for key, label, href in items %}
+        <option value="{{ href }}"{% if key == nav_current %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </nav>
+  <div class="tournament-layout__content stack">
+    {% block tournament_content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

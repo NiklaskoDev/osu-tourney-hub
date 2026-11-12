@@ -6,7 +6,20 @@ import pytest
 from app.db.connection import open_db, transaction
 from app.db.migrate import MIGRATIONS_DIR, MigrationError, discover_migrations, migrate
 
-EXPECTED_TABLES = {"schema_migrations", "users", "app_settings", "job_state", "feed_tokens"}
+EXPECTED_TABLES = {
+    "schema_migrations",
+    "users",
+    "app_settings",
+    "job_state",
+    "feed_tokens",
+    "admin_wybin_links",
+    "tournaments",
+    "teams",
+    "team_players",
+    "tournament_members",
+    "stages",
+    "pool_maps",
+}
 
 
 @pytest.fixture
@@ -141,3 +154,126 @@ def test_transaction_commits_on_success_and_rolls_back_on_error(conn):
 
     assert [row["id"] for row in conn.execute("SELECT id FROM t")] == [1]
     assert not conn.in_transaction
+
+
+def add_tournament(conn, **overrides):
+    values = {
+        "name": "Spring Cup",
+        "gamemode": 0,
+        "is_solo": 0,
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+    values.update(overrides)
+    columns = ", ".join(values)
+    marks = ", ".join("?" for _ in values)
+    cursor = conn.execute(
+        f"INSERT INTO tournaments ({columns}) VALUES ({marks})",  # noqa: S608 - test-only keys
+        tuple(values.values()),
+    )
+    return cursor.lastrowid
+
+
+@pytest.fixture
+def migrated(conn, clock):
+    migrate(conn, clock)
+    return conn
+
+
+def test_deleting_a_tournament_removes_everything_that_belongs_to_it(migrated):
+    tournament_id = add_tournament(migrated)
+    team_id = migrated.execute(
+        "INSERT INTO teams (tournament_id, name) VALUES (?, 'Sample Team')", (tournament_id,)
+    ).lastrowid
+    migrated.execute(
+        "UPDATE tournaments SET our_team_id = ? WHERE id = ?", (team_id, tournament_id)
+    )
+    migrated.execute(
+        "INSERT INTO team_players (team_id, osu_id, username) VALUES (?, 5, 'Sample')", (team_id,)
+    )
+    migrated.execute(
+        "INSERT INTO tournament_members (tournament_id, osu_id, role) VALUES (?, 5, 'player')",
+        (tournament_id,),
+    )
+    stage_id = migrated.execute(
+        "INSERT INTO stages (tournament_id, name, sort_order, is_qualifier) VALUES (?, 'Q', 1, 1)",
+        (tournament_id,),
+    ).lastrowid
+    migrated.execute(
+        "INSERT INTO pool_maps (stage_id, slot, bracket, required_mods, is_freemod, "
+        "is_tiebreaker, sort_order) VALUES (?, 'NM1', 'NoMod', '', 0, 0, 1)",
+        (stage_id,),
+    )
+
+    migrated.execute("DELETE FROM tournaments WHERE id = ?", (tournament_id,))
+
+    for table in ("teams", "team_players", "tournament_members", "stages", "pool_maps"):
+        assert migrated.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0, table  # noqa: S608
+
+
+def test_membership_roles_are_limited_to_the_known_ones(migrated):
+    tournament_id = add_tournament(migrated)
+
+    with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+        migrated.execute(
+            "INSERT INTO tournament_members (tournament_id, osu_id, role) VALUES (?, 5, 'owner')",
+            (tournament_id,),
+        )
+
+
+def test_a_person_can_only_be_on_a_roster_once(migrated):
+    tournament_id = add_tournament(migrated)
+    insert = "INSERT INTO tournament_members (tournament_id, osu_id, role) VALUES (?, 5, 'player')"
+    migrated.execute(insert, (tournament_id,))
+
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        migrated.execute(insert, (tournament_id,))
+
+
+def test_roster_entries_may_exist_before_the_person_has_logged_in(migrated):
+    tournament_id = add_tournament(migrated)
+
+    migrated.execute(
+        "INSERT INTO tournament_members (tournament_id, osu_id, role) VALUES (?, 999, 'guest')",
+        (tournament_id,),
+    )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"gamemode": 4},
+        {"status": "deleted"},
+        {"scoring": "v3"},
+        {"freemod_rule": "anything"},
+        {"source": "import"},
+        {"wybin_id": 1},
+    ],
+)
+def test_tournament_constraints(migrated, overrides):
+    add_tournament(migrated, wybin_id=1)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        add_tournament(migrated, **overrides)
+
+
+def test_a_new_tournament_is_active_with_v2_scoring(migrated):
+    tournament_id = add_tournament(migrated)
+
+    row = migrated.execute(
+        "SELECT status, scoring, freemod_rule FROM tournaments WHERE id = ?", (tournament_id,)
+    ).fetchone()
+
+    assert tuple(row) == ("active", "v2", "none")
+
+
+def test_deleting_a_user_keeps_their_tournaments_but_clears_the_owner(migrated):
+    migrated.execute(
+        "INSERT INTO users (osu_id, username, created_at) "
+        "VALUES (1, 'Owner', '2026-01-01T00:00:00Z')"
+    )
+    tournament_id = add_tournament(migrated, owner_osu_id=1)
+
+    migrated.execute("DELETE FROM users WHERE osu_id = 1")
+
+    row = migrated.execute("SELECT owner_osu_id FROM tournaments WHERE id = ?", (tournament_id,))
+    assert row.fetchone()[0] is None

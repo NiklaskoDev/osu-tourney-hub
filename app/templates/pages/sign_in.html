@@ -1,0 +1,10 @@
+{% extends "layout/shell.html" %}
+{% from "components/button.html" import button %}
+{% block title %}Log in - {% endblock %}
+{% block content %}
+<div class="stack">
+  <h1>Log in</h1>
+  <p>Log in with your osu! account to see your tournaments. The hub keeps your osu! user id, username, avatar and country, and nothing else.</p>
+  <div>{{ button("Log in with osu!", variant="primary", href="/auth/login", icon_name="user") }}</div>
+</div>
+{% endblock %}

@@ -1,11 +1,9 @@
 import re
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.config import Settings
-from app.main import create_app
 from app.web.templating import templates
+from tests.support import ADMIN_ID
 
 COMPONENT_MARKERS = [
     "btn btn--primary",
@@ -25,6 +23,8 @@ COMPONENT_MARKERS = [
     "data-countdown",
     'class="pagination"',
     "data-copy=",
+    'class="check',
+    'method="post"',
     'class="avail"',
     "result--win",
     "result--loss",
@@ -32,40 +32,43 @@ COMPONENT_MARKERS = [
 
 
 @pytest.fixture
-def preview_client(valid_env, clock):
-    valid_env["STYLEGUIDE_PREVIEW"] = "true"
-    with TestClient(create_app(Settings.from_env(valid_env), clock)) as test_client:
-        yield test_client
-
-
-def test_styleguide_is_hidden_by_default(client):
-    assert client.get("/styleguide").status_code == 404
-
-
-def test_styleguide_renders_every_component_when_preview_is_on(preview_client):
-    response = preview_client.get("/styleguide")
-
+def admin_page(client, login) -> str:
+    login(ADMIN_ID)
+    response = client.get("/styleguide")
     assert response.status_code == 200
+    return response.text
+
+
+def test_styleguide_sends_anonymous_visitors_to_the_login(client):
+    response = client.get("/styleguide", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/auth/login?next=%2Fstyleguide"
+
+
+def test_styleguide_is_forbidden_for_a_non_admin(client, login):
+    login(5555)
+
+    assert client.get("/styleguide").status_code == 403
+
+
+def test_styleguide_renders_every_component_for_an_admin(admin_page):
     for marker in COMPONENT_MARKERS:
-        assert marker in response.text, marker
+        assert marker in admin_page, marker
 
 
-def test_styleguide_page_is_compatible_with_the_csp(preview_client):
-    html = preview_client.get("/styleguide").text
-
-    assert not re.search(r"<script(?![^>]*\bsrc=)", html), "inline script"
-    assert not re.search(r"\sstyle=", html), "inline style attribute"
-    assert not re.search(r"\son[a-z]+=", html), "inline event handler"
-    assert '"allowEval":false' in html
-    assert '"includeIndicatorStyles":false' in html
+def test_styleguide_page_is_compatible_with_the_csp(admin_page):
+    assert not re.search(r"<script(?![^>]*\bsrc=)", admin_page), "inline script"
+    assert not re.search(r"\sstyle=", admin_page), "inline style attribute"
+    assert not re.search(r"\son[a-z]+=", admin_page), "inline event handler"
+    assert '"allowEval":false' in admin_page
+    assert '"includeIndicatorStyles":false' in admin_page
 
 
-def test_availability_states_are_labelled_with_text(preview_client):
-    html = preview_client.get("/styleguide").text
-
+def test_availability_states_are_labelled_with_text(admin_page):
     for state, label in (("yes", "Yes"), ("maybe", "Maybe"), ("no", "No")):
         assert re.search(
-            rf'data-state="{state}"[^>]*>\s*<span data-avail-label>{label}</span>', html
+            rf'data-state="{state}"[^>]*>\s*<span data-avail-label>{label}</span>', admin_page
         )
 
 

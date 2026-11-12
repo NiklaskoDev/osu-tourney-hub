@@ -437,3 +437,4 @@ All decided on 2026-11-12. D5 by the programmer's own wording; every other one a
 - Backups: `/data/app.db` (+ `-wal`) is the only state; Unraid appdata backup covers it; document.
 - Declined Discord webhooks (retrofit easy): the job/event structure (`workers/jobs.py`, `LiveHub` events) does not block adding it later.
 - The guideline's `CHANGELOG.md` has a placeholder `[0.1.0] - YYYY-MM-DD` block; phase 0 removes it so the first real release creates it properly.
+- A roster can lose its last captain through account deletion (the last-captain rule guards role changes and removal only). Decide in a later phase whether to block it or let an admin fix it.

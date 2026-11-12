@@ -4,8 +4,9 @@ Self-hosted website for an osu! tournament team, shipped as one Docker container
 Unraid). Log in with osu!, import tournaments from wybin, keep a mappool sheet with scores, lineup
 suggestions, availability, an MP lobby skimmer and matchup predictions.
 
-Status: early development. The container, configuration, database migrations, `/healthz` and a
-design `/styleguide` exist; the features arrive phase by phase (see `docs/plans/`).
+Status: early development. The container, configuration, database migrations, `/healthz`, login
+with osu!, tournament roles and member management, and an admin-only design `/styleguide` exist; the
+other features arrive phase by phase (see `docs/plans/`).
 
 ## Set up the osu! OAuth application
 
@@ -55,11 +56,27 @@ reverse proxy in front (SWAG, Nginx Proxy Manager, Traefik, ...) that terminates
 port 8080. `PUBLIC_URL` must be the public https address; it is the only address the app uses to
 build redirects.
 
+Port 8080 must only be reachable through that reverse proxy. The server is started with
+`--forwarded-allow-ips '*'`, so it believes the `X-Forwarded-For` and `X-Forwarded-Proto` headers of
+whoever connects. Someone who can reach port 8080 directly can forge them, which defeats the per-IP
+limit on the login routes and the secure-cookie handling. Do not publish the port on the internet or
+your LAN: on Unraid use a custom Docker network shared with the proxy, or bind it to the proxy host
+only (`-p 127.0.0.1:8080:8080`).
+
 ### Backup and a single process
 
 All state lives in `/data` (`app.db`, plus `app.db-wal` and `app.db-shm` while running). Back up that
 folder; the Unraid appdata backup covers it. Run exactly one container and one server process:
 background jobs and live updates run in-process, so do not add uvicorn `--workers`.
+
+## Logging in and roles
+
+Everyone logs in with their osu! account; the app reads only the osu! user id, username, avatar and
+country. The osu! ids in `ADMIN_OSU_IDS` are administrators and can open every tournament. Inside a
+tournament there are four roles: captain and co-captain (can manage members), player, and guest
+(read-only). A player can be made temporary captain until a set time. Captains add guests by osu!
+user id on the Members page. Each person can download or delete their data on the Profile page.
+A session ends 14 days after the last visit; "Log out everywhere" on the Profile page ends all of them.
 
 ## Configuration
 
@@ -89,8 +106,10 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `LOG_LEVEL` | info | debug, info, warning, error, critical |
 | `DATA_DIR` | `/data` | set by the image; change only outside Docker |
 
-The variables from `OSU_API_RATE_PER_MIN` down to `AI_BASE_URL` are accepted already but only take
-effect in the versions that add the matching feature.
+Read by this version: the five required variables, `OSU_API_RATE_PER_MIN`, `LOG_LEVEL`, `DATA_DIR`
+(and `PUID`/`PGID` by the container start-up script). The variables from `WYBIN_POLL_MINUTES` down to
+`AI_BASE_URL` are not read yet; they only take effect in the versions that add the matching feature,
+and setting them now changes nothing.
 
 ## Local development
 
@@ -110,5 +129,7 @@ pytest
 ruff check . && ruff format --check .
 ```
 
-Until login exists, set `STYLEGUIDE_PREVIEW=true` to open `/styleguide` (every design token and
-component in every state) at `http://localhost:8080/styleguide`.
+Logging in needs a real osu! OAuth application (callback `http://localhost:8080/auth/callback`)
+and your own osu! user id in `ADMIN_OSU_IDS`. Administrators can open `/styleguide` (every design
+token and component in every state) at `http://localhost:8080/styleguide`. The tests never contact
+osu!: they use a fake osu! and a login shortcut that exists only inside the test suite.

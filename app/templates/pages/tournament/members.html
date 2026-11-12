@@ -1,0 +1,125 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/checkbox.html" import checkbox %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/dialog.html" import dialog %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% block title %}Members - {{ tournament.name }} - {% endblock %}
+
+{% macro person(member) -%}
+<span class="person">
+  {% if member.avatar_url %}<img class="avatar" src="{{ member.avatar_url }}" alt="" width="28" height="28">{% endif %}
+  <span>{{ member.username or ("osu! user " ~ member.osu_id) }}</span>
+  <span class="muted mono">{{ member.osu_id }}</span>
+</span>
+{%- endmacro %}
+
+{% macro temp_note(row) -%}
+{%- if row.temp_state == "active" -%}
+<span class="muted">Acts as captain until {{ row.temp_value|replace("T", " ") }} UTC</span>
+{%- elif row.temp_state == "expired" -%}
+<span class="muted">Captain period ended {{ row.temp_value|replace("T", " ") }} UTC</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% block tournament_content %}
+<div class="page__header">
+  <h1>Members</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}The roster is read-only. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+{% if row_error %}
+{% call alert("error", "That change was not made") %}{{ row_error }}{% endcall %}
+{% endif %}
+
+{% if can_edit %}
+{% call table("Tournament members, editable") %}
+<thead>
+  <tr>
+    <th scope="col">Person</th>
+    <th scope="col">Role</th>
+    <th scope="col">Substitute</th>
+    <th scope="col">Captain until (UTC)</th>
+    <th scope="col"><span class="visually-hidden">Actions</span></th>
+  </tr>
+</thead>
+<tbody>
+  {% for row in rows %}
+  {% set member = row.member %}
+  {% set locked = row.is_self and not access.is_admin %}
+  <tr>
+    <th scope="row">{{ person(member) }}<div>{{ temp_note(row) }}</div></th>
+    <td>
+      {% if locked %}
+      <input type="hidden" name="role" value="{{ member.role }}" form="edit-{{ member.osu_id }}">
+      {% endif %}
+      {{ field("role" if not locked else "role_shown", "Role of " ~ (member.username or member.osu_id), options=role_options, value=member.role, id="role-" ~ member.osu_id, label_hidden=true, required=true, disabled=(archived or locked), form="edit-" ~ member.osu_id, title=("You cannot change your own role." if locked else "")) }}
+    </td>
+    <td>
+      {{ checkbox("is_substitute", "Substitute: " ~ (member.username or member.osu_id), label_hidden=true, checked=member.is_substitute, disabled=archived, id="sub-" ~ member.osu_id, form="edit-" ~ member.osu_id) }}
+    </td>
+    <td>
+      {% if locked %}
+      <input type="hidden" name="temp_captain_until" value="{{ row.temp_value }}" form="edit-{{ member.osu_id }}">
+      {% endif %}
+      {{ field("temp_captain_until" if not locked else "temp_shown", "Temporary captain until (UTC) for " ~ (member.username or member.osu_id), kind="datetime-local", value=row.temp_value, id="temp-" ~ member.osu_id, label_hidden=true, disabled=(archived or locked), form="edit-" ~ member.osu_id) }}
+    </td>
+    <td>
+      <div class="row row--nowrap">
+        <form id="edit-{{ member.osu_id }}" method="post" action="/t/{{ tournament.id }}/members/{{ member.osu_id }}">
+          {{ csrf_field(csrf_token) }}
+          {{ button("Save", variant="secondary", type="submit", disabled=archived) }}
+        </form>
+        {{ button("Remove", variant="text", disabled=archived, data_dialog_open="remove-" ~ member.osu_id) }}
+        {% call dialog("remove-" ~ member.osu_id, "Remove " ~ (member.username or member.osu_id) ~ "?", "Remove from tournament", danger=true, action="/t/" ~ tournament.id ~ "/members/" ~ member.osu_id ~ "/remove", csrf=csrf_token) %}
+        <p>They lose access to this tournament right away.</p>
+        {% endcall %}
+      </div>
+    </td>
+  </tr>
+  {% endfor %}
+</tbody>
+{% endcall %}
+<p class="muted">Only players can be temporary captains; the date is cleared for other roles. Substitutes are left out of lineup suggestions unless a captain includes them.</p>
+
+<section class="stack" aria-labelledby="add-guest">
+  <h2 id="add-guest">Add a guest</h2>
+  <p class="muted">Guests can read this tournament but cannot add scores or notes. Enter the osu! user id from their profile address.</p>
+  <form class="stack" method="post" action="/t/{{ tournament.id }}/members">
+    {{ csrf_field(csrf_token) }}
+    {{ field("osu_id", "osu! user id", kind="text", value=add_entered|default(""), required=true, error=add_error|default(none), disabled=archived, inputmode="numeric", autocomplete="off") }}
+    <div>{{ button("Add guest", variant="primary", type="submit", icon_name="plus", disabled=archived) }}</div>
+  </form>
+</section>
+{% else %}
+{% if rows %}
+{% call table("Tournament members") %}
+<thead>
+  <tr>
+    <th scope="col">Person</th>
+    <th scope="col">Role</th>
+    <th scope="col">Substitute</th>
+  </tr>
+</thead>
+<tbody>
+  {% for row in rows %}
+  <tr>
+    <th scope="row">{{ person(row.member) }}</th>
+    <td>{{ badge(role_labels[row.member.role]) }}{% if row.temp_state == "active" %} <span class="muted">Captain until {{ row.temp_value|replace("T", " ") }} UTC</span>{% endif %}</td>
+    <td>{{ "Yes" if row.member.is_substitute else "No" }}</td>
+  </tr>
+  {% endfor %}
+</tbody>
+{% endcall %}
+{% else %}
+{{ empty_state("This tournament has no members yet.") }}
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% block title %}{{ tournament.name }} - {% endblock %}
+{% block tournament_content %}
+<div class="page__header">
+  <h1>{{ tournament.name }}{% if tournament.acronym %} <span class="muted">{{ tournament.acronym }}</span>{% endif %}</h1>
+</div>
+{% if tournament.status == "archived" %}
+{% call alert("info", "This tournament is archived") %}You can read everything, but nothing can be changed. An administrator can unarchive it.{% endcall %}
+{% endif %}
+<dl class="facts">
+  <div><dt>Your role</dt><dd>{{ badge(role_name) }}</dd></div>
+  <div><dt>Members</dt><dd><a href="/t/{{ tournament.id }}/members">{{ member_count }}</a></dd></div>
+</dl>
+{% endblock %}

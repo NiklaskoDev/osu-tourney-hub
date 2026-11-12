@@ -2,6 +2,7 @@
 {% from "components/icon.html" import icon %}
 {% from "components/button.html" import button %}
 {% from "components/field.html" import field %}
+{% from "components/checkbox.html" import checkbox %}
 {% from "components/table.html" import table %}
 {% from "components/tabs.html" import tabs %}
 {% from "components/badge.html" import badge %}
@@ -94,6 +95,11 @@
       {{ field("sg-acc", "Accuracy", kind="text", value="101", required=true, error="Accuracy must be between 0 and 100. Enter it as a percentage, for example 98.4.") }}
       {{ field("sg-mods", "Mods", options=[("", "No mods"), ("HD", "HD"), ("HR", "HR"), ("DT", "DT")], value="HD") }}
       {{ field("sg-note", "Note", kind="textarea", hint="Up to 2000 characters. Visible to you only unless shared with the team.") }}
+      <div class="row">
+        {{ checkbox("sg-sub", "Substitute", checked=true) }}
+        {{ checkbox("sg-incl", "Include substitutes") }}
+        {{ checkbox("sg-off", "Locked", disabled=true) }}
+      </div>
       {{ field("sg-locked", "Tournament", value="Archived tournament", required=true, disabled=true, hint="This tournament is archived. Unarchive it to edit.") }}
     </div>
   </section>

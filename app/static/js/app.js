@@ -93,6 +93,15 @@
     if (cell) cycleAvailability(cell);
   });
 
+  // <select data-nav-select> holds same-site paths; choosing one goes there.
+  document.addEventListener("change", function (event) {
+    var target = event.target;
+    if (!(target instanceof HTMLSelectElement) || !target.hasAttribute("data-nav-select")) return;
+    if (target.value.charAt(0) === "/" && target.value.charAt(1) !== "/") {
+      window.location.assign(target.value);
+    }
+  });
+
   document.addEventListener("DOMContentLoaded", function () {
     renderAll(document);
     window.setInterval(tickCountdowns, 1000);
