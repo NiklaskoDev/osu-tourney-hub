@@ -44,5 +44,5 @@
   <Config Name="AI provider" Target="AI_PROVIDER" Default="" Mode="" Description="Provider for optional AI predictions: anthropic, or openai for an OpenAI-compatible endpoint. Empty keeps them off." Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="AI API key" Target="AI_API_KEY" Default="" Mode="" Description="API key of the AI provider (not needed for a local endpoint)." Type="Variable" Display="advanced" Required="false" Mask="true"/>
   <Config Name="AI model" Target="AI_MODEL" Default="" Mode="" Description="Model name to use, for example claude-sonnet-5-5. AI stays off without it." Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="AI base URL" Target="AI_BASE_URL" Default="" Mode="" Description="Address of an OpenAI-compatible or local endpoint, for example http://host:11434/v1." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="AI base URL" Target="AI_BASE_URL" Default="" Mode="" Description="Address of an OpenAI-compatible or local endpoint, for example http://192.168.1.20:11434/v1. Must be https unless the host is local or private." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 </Container>

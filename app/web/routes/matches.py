@@ -34,6 +34,7 @@ from app.web.templating import render
 router = APIRouter(prefix="/t/{tid}/matches/{mid}")
 
 NO_SUCH_MATCH = "This match is not in this tournament."
+AI_BUSY = "An AI estimate for this match is already being fetched. Wait for it to finish."
 AI_FAILED = "The AI service could not give a usable estimate. Nothing was saved. Try again later."
 
 
@@ -153,6 +154,9 @@ async def predict_ai(
     if not ai.enabled:
         raise UserFacingError(404, "This page does not exist, or you do not have access to it.")
     match = find_match(db, access, mid)
+    in_flight: set[int] = request.app.state.ai_inflight
+    if match.id in in_flight:  # a double click or a second captain: one paid call is enough
+        raise UserFacingError(409, AI_BUSY)
     try:
         prepared = ai_prediction.prepare(db, access.tournament, match)
     except CannotPredict as refused:
@@ -167,11 +171,14 @@ async def predict_ai(
             f"You asked for several AI estimates lately. Try again in about {minutes} minutes.",
             headers={"Retry-After": str(wait)},
         )
+    in_flight.add(match.id)  # no await since the check above, so no ask slips in between
     try:
         await ai_prediction.estimate(
             db, ai, prepared, f"{settings.ai_provider}:{settings.ai_model}", clock.now()
         )
     except AiError:
         return _page(request, access, db, match, 502, ai_error=AI_FAILED)
+    finally:
+        in_flight.discard(match.id)
     flash(request, "success", "AI estimate saved.")
     return RedirectResponse(f"/t/{access.tournament.id}/matches/{match.id}", status_code=303)

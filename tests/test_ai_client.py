@@ -306,6 +306,47 @@ async def test_the_key_never_reaches_the_log_or_the_error(fake, caplog, make):
     assert "HTTP 401" in caplog.text  # the reason is logged, nothing more
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "tool_choice: forced tool use is not supported with thinking enabled",
+        "Thinking may not be enabled when tool_choice forces tool use.",
+    ],
+)
+async def test_a_400_about_thinking_models_is_logged_with_its_reason_only(fake, caplog, message):
+    caplog.set_level(logging.DEBUG)
+    body = {"type": "error", "error": {"type": "invalid_request_error", "message": message}}
+    fake.replies.append(httpx.Response(400, json=body))
+
+    with pytest.raises(AiError) as failure:
+        await anthropic(fake).predict(CONTEXT)
+
+    assert "extended thinking" in caplog.text and "claude-sonnet-5-5" in caplog.text
+    assert message not in caplog.text and KEY not in caplog.text
+    assert len(fake.requests) == 1  # a refused setup is not retried
+    assert failure.value.retryable is False
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        httpx.Response(400, json={"error": {"message": "max_tokens is too large"}}),
+        httpx.Response(400, text="not json at all"),
+        httpx.Response(400, json=["unexpected"]),
+        httpx.Response(401, json={"error": {"message": "tool_choice thinking"}}),
+    ],
+)
+async def test_any_other_failure_keeps_the_plain_status_reason(fake, caplog, reply):
+    caplog.set_level(logging.DEBUG)
+    fake.replies.append(reply)
+
+    with pytest.raises(AiError):
+        await anthropic(fake).predict(CONTEXT)
+
+    assert "extended thinking" not in caplog.text
+    assert f"HTTP {reply.status_code}" in caplog.text
+
+
 async def test_a_dropped_connection_logs_no_url_or_key(fake, caplog):
     caplog.set_level(logging.DEBUG)
 

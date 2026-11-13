@@ -8,6 +8,7 @@ no osu! username and no team name leaves the server: teams are "Team A" and "Tea
 """
 
 import json
+import logging
 import sqlite3
 import string
 from dataclasses import dataclass
@@ -26,6 +27,8 @@ from app.services import history, matchup, prediction
 from app.services.prediction import Habits
 from app.services.schedule import UNKNOWN_TEAM
 from app.services.tournament_settings import effective_lineup_size
+
+logger = logging.getLogger(__name__)
 
 SHARE_USERNAMES_KEY = "ai_share_usernames"
 KIND = "ai"
@@ -263,25 +266,32 @@ def store_estimate(
 def latest_estimate(
     conn: sqlite3.Connection, match: Match, left: Team | None, right: Team | None
 ) -> AiEstimate | None:
-    """The newest stored AI estimate of the match, in the names of the page's two teams."""
+    """The newest stored AI estimate of the match, in the names of the page's two teams. A row that
+    cannot be read is logged and skipped, so the page still renders without it."""
     snapshot = predictions_repo.latest_snapshot(conn, match.id, KIND)
     if snapshot is None or left is None or right is None:
         return None
-    payload = json.loads(snapshot.payload)
     name = {left.id: left.name, right.id: right.name}
 
     def team_name(team_id: int) -> str:
         return name.get(team_id, UNKNOWN_TEAM)
 
-    return AiEstimate(
-        created_at=snapshot.created_at,
-        model=snapshot.model_version,
-        left_chance=(
-            snapshot.win_prob_team1 if left.id == match.team1_id else 1 - snapshot.win_prob_team1
-        ),
-        winner_name=team_name(payload["winner_team_id"]),
-        win_percent=payload["win_percent"],
-        bans=[(team_name(int(tid)), slots) for tid, slots in payload["bans"].items()],
-        picks=[(team_name(pick["team_id"]), pick["slot"]) for pick in payload["picks"]],
-        reasoning=payload["reasoning"],
-    )
+    try:
+        payload = json.loads(snapshot.payload)
+        return AiEstimate(
+            created_at=snapshot.created_at,
+            model=snapshot.model_version,
+            left_chance=(
+                snapshot.win_prob_team1
+                if left.id == match.team1_id
+                else 1 - snapshot.win_prob_team1
+            ),
+            winner_name=team_name(payload["winner_team_id"]),
+            win_percent=payload["win_percent"],
+            bans=[(team_name(int(tid)), slots) for tid, slots in payload["bans"].items()],
+            picks=[(team_name(pick["team_id"]), pick["slot"]) for pick in payload["picks"]],
+            reasoning=payload["reasoning"],
+        )
+    except (ValueError, KeyError, TypeError, AttributeError):
+        logger.warning("Skipping an unreadable AI estimate of match %d", match.id)
+        return None

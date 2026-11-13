@@ -3,13 +3,19 @@
 Errors name the variables that are wrong and never echo their values.
 """
 
+import ipaddress
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+_PRIVATE_NETWORKS = tuple(
+    ipaddress.ip_network(cidr) for cidr in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+)
+_SERVICE_NAME = re.compile(r"[a-z][a-z0-9-]*")
 REQUIRED_VARIABLES = (
     "OSU_CLIENT_ID",
     "OSU_CLIENT_SECRET",
@@ -254,7 +260,11 @@ def _ai_settings(environ: Mapping[str, str], invalid: dict[str, str]) -> dict[st
         invalid["AI_MODEL"] = f"must be a model name of at most {MAX_AI_MODEL_LENGTH} characters"
     base_url = environ.get("AI_BASE_URL", "").strip().rstrip("/")
     if base_url and not _is_api_base_url(base_url):
-        invalid["AI_BASE_URL"] = "must look like https://host[:port][/path] without credentials"
+        invalid["AI_BASE_URL"] = (
+            "must look like https://host[:port][/path] without credentials; plain http is only "
+            "accepted for localhost, host.docker.internal, names without a dot, *.local and "
+            "private addresses (10/8, 172.16/12, 192.168/16)"
+        )
     return {
         "ai_provider": provider,
         "ai_api_key": environ.get("AI_API_KEY", "").strip(),
@@ -276,6 +286,29 @@ def _is_api_base_url(url: str) -> bool:
         and parts.password is None
         and not parts.query
         and not parts.fragment
+        and (parts.scheme == "https" or _is_local_host(parts.hostname or ""))
+    )
+
+
+def _is_local_host(host: str) -> bool:
+    """Where plain http is acceptable: this machine or the home network (Ollama on the LAN),
+    never a public host, where the API key and the data would travel unencrypted."""
+    host = host.lower()
+    # A name without a dot (a Docker service such as "ollama") is resolved by the local network and
+    # cannot be a public host. It must start with a letter: "8", "0x08080808" or "1e3" are number
+    # shorthand that a resolver turns into a public address. A trailing dot is not stripped for
+    # this, so "com." (an absolute name) stays refused.
+    if _SERVICE_NAME.fullmatch(host):
+        return True
+    host = host.rstrip(".")
+    if host in ("localhost", "host.docker.internal") or host.endswith(".local"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or any(
+        address in network for network in _PRIVATE_NETWORKS if address.version == network.version
     )
 
 

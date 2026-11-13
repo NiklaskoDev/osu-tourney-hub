@@ -109,6 +109,28 @@
     }
   });
 
+  // <form data-disable-on-submit> turns its buttons off once sent, so a double click cannot repeat a
+  // slow or paid request. Coming back through the history restores the page, so turn them on again.
+  function setSubmitButtons(form, disabled) {
+    form.querySelectorAll("button[type=submit]").forEach(function (button) {
+      button.disabled = disabled;
+    });
+  }
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-disable-on-submit")) return;
+    // Disable after the browser has read the form, so the request still goes out.
+    window.setTimeout(function () {
+      setSubmitButtons(form, true);
+    }, 0);
+  });
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted) return;
+    document.querySelectorAll("form[data-disable-on-submit]").forEach(function (form) {
+      setSubmitButtons(form, false);
+    });
+  });
+
   document.addEventListener("DOMContentLoaded", function () {
     renderAll(document);
     openMarkedDialogs(document);

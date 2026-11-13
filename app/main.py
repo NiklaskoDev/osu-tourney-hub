@@ -152,6 +152,7 @@ def create_app(
         LOBBY_LINK_LIMIT_PER_HOUR, timedelta(hours=1), clock
     )
     app.state.ai_limiter = SlidingWindowLimiter(AI_LIMIT_PER_HOUR, timedelta(hours=1), clock)
+    app.state.ai_inflight = set()  # ids of matches with an AI ask under way (single worker)
     app.state.import_limiter = SlidingWindowLimiter(
         IMPORT_LIMIT_PER_HOUR, timedelta(hours=1), clock
     )

@@ -196,17 +196,45 @@ class _HttpProvider(ABC):
             raise AiError(f"connection failed ({type(failure).__name__})", True) from failure
         if response.status_code != 200:
             # No retry on 429: a second call right away only spends more of a limit already hit.
-            raise AiError(f"HTTP {response.status_code}", retryable=response.status_code >= 500)
+            raise AiError(self._failure_reason(response), retryable=response.status_code >= 500)
         try:
             return response.json()
         except ValueError as failure:
             raise AiError("the reply is not JSON", retryable=True) from failure
+
+    def _failure_reason(self, response: httpx.Response) -> str:
+        """A short log-safe reason for a non-200 reply; never any of its body."""
+        return f"HTTP {response.status_code}"
+
+
+THINKING_HINT = "set AI_MODEL to a normal model such as claude-sonnet-5-5, not a thinking mode"
+
+
+def _rejects_forced_tool(response: httpx.Response) -> bool:
+    """True when a 400 says `tool_choice` and `thinking` do not go together."""
+    try:
+        error = response.json().get("error")
+        message = error.get("message") if isinstance(error, dict) else None
+    except (ValueError, AttributeError):
+        return False
+    if not isinstance(message, str):
+        return False
+    lowered = message.lower()
+    return "tool_choice" in lowered or "thinking" in lowered
 
 
 class AnthropicProvider(_HttpProvider):
     """The Messages API, answering through one forced tool call whose input is the schema."""
 
     label = "anthropic"
+
+    def _failure_reason(self, response: httpx.Response) -> str:
+        """Extended-thinking models refuse a forced `tool_choice` with a 400. That is a setup
+        problem the admin can fix, so name it in the log; the body itself is never logged."""
+        reason = super()._failure_reason(response)
+        if response.status_code == 400 and _rejects_forced_tool(response):
+            return f"{reason}: no forced tool call with extended thinking; {THINKING_HINT}"
+        return reason
 
     async def _answer(self, message: str) -> object:
         body = {

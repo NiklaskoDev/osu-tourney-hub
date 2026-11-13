@@ -153,7 +153,7 @@
   {{ empty_state("No AI estimate for this match yet.") }}
   {% endif %}
   {% if can_ask_ai %}
-  <form method="post" action="/t/{{ tournament.id }}/matches/{{ match.id }}/predict-ai">
+  <form method="post" action="/t/{{ tournament.id }}/matches/{{ match.id }}/predict-ai" data-disable-on-submit>
     {{ csrf_field(csrf_token) }}
     <div>{{ button("Ask the AI again" if ai_estimate else "Ask the AI for an estimate", variant="secondary", type="submit") }}</div>
   </form>

@@ -65,12 +65,16 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - Lazer scores from osu! count on ScoreV2 tournaments (osu! offers no ScoreV2 figure), marked "lazer" on the Pool page; ScoreV1 scores still never count there.
 
 ### Fixed
+- The "Ask the AI" button is disabled while the request runs, and a second AI ask for the same match while one is under way is refused (409), so a double click cannot make two paid calls.
+- A stored AI estimate that cannot be read is logged and skipped instead of breaking the match page.
+- A 400 from the Anthropic provider caused by an extended-thinking model is logged with that reason; README and `.env.example` say thinking-only modes are not supported.
 - A refused lineup save keeps the "include substitutes" choice; `subs` in the lineup address only counts when it is `1`.
 - Scores from osu! are pulled in the current score format; before, osu! answered in an older format and every pulled score was left out.
 - The Google Sheets import follows Google's redirect to its CSV download address (`doc-...-sheets.googleusercontent.com`) and refuses any other target.
 - A failed wybin sync reports its own error instead of one from the score queue.
 
 ### Security
+- `AI_BASE_URL` must use `https`; plain `http` is accepted only for `localhost`, `host.docker.internal`, `127.0.0.1`, `::1`, host names without a dot (such as `http://ollama:11434/v1`), `*.local` names and private addresses (10/8, 172.16/12, 192.168/16), so a key and match data never travel unencrypted to a public host. A plain-http public address now stops the start.
 - State-changing requests larger than 2 MB, with an unreadable `Content-Length`, or without a `Content-Length` (chunked) are refused before their body is read.
 - The AI provider key is only sent as a request header and is never logged, shown or stored in the database; a failed AI call logs a short reason such as `HTTP 401`, never the reply, the address or the key.
 - CSRF token on every state-changing request, a per-IP limit of 20 requests a minute on the login routes, and session cookies that are HttpOnly, Secure (on https) and SameSite=Lax.

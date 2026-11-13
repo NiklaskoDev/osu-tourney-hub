@@ -168,7 +168,17 @@ a short reasoning) is stored and shown under "AI estimate", next to the statisti
 stays the default. A captain can ask five times an hour. Providers are `anthropic` (Messages API) and
 `openai` (chat completions at `AI_BASE_URL`, so OpenAI, OpenRouter or a local server), called with
 plain HTTP requests; no SDK is installed. A reply that does not match the expected structure is
-dropped and nothing is saved.
+dropped and nothing is saved. The button is disabled while a request runs, and a second ask for the
+same match while one is under way is refused.
+
+Use a normal model such as `claude-sonnet-5-5`. Thinking-only and extended-thinking modes are not
+supported: the `anthropic` provider forces a tool call to get a structured answer, which those modes
+reject (the log then names this as the reason; the page only says the AI could not answer).
+`AI_BASE_URL` must be `https://`, except for `localhost`, `host.docker.internal`, `127.0.0.1`, `::1`,
+names without a dot (a Docker service such as `http://ollama:11434/v1`), `*.local` names and
+private addresses (`10.x`, `172.16-31.x`, `192.168.x`), where plain `http://` is accepted, for example
+Ollama on your LAN. Plain http to a public host stops the start. IPv6 LAN addresses need `https://` or a container
+name instead.
 
 What is sent: the stage format, the pool slots with star rating and mods, each team's expected score
 per map, each player's best scores, the statistical model's output and the teams' pick and ban
@@ -203,7 +213,7 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `AI_PROVIDER` | empty (off) | `anthropic` or `openai` (any OpenAI-compatible endpoint); empty keeps AI predictions off |
 | `AI_API_KEY` | empty, secret | not needed for an `openai` provider with its own `AI_BASE_URL` (a local server) |
 | `AI_MODEL` | empty | the model name, for example `claude-sonnet-5-5`; AI stays off without it |
-| `AI_BASE_URL` | empty | address of an OpenAI-compatible or local endpoint, for example `http://host:11434/v1` |
+| `AI_BASE_URL` | empty | address of an OpenAI-compatible or local endpoint, for example `http://192.168.1.20:11434/v1`; `https` unless the host is local or private |
 | `LOG_LEVEL` | info | debug, info, warning, error, critical |
 | `DATA_DIR` | `/data` | set by the image; change only outside Docker |
 

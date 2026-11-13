@@ -2,10 +2,12 @@
 the per-person limit, and the admin setting that decides whether names leave the server."""
 
 import json
+import logging
 from datetime import timedelta
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.repos import app_settings as app_settings_repo
@@ -51,6 +53,15 @@ def match_id(db, cup):
 
 def url(cup, match, tail=""):
     return f"/t/{cup['id']}/matches/{match}{tail}"
+
+
+def second_browser(client) -> TestClient:
+    """Another client on the same app and session. The shared one is busy (and its event loop
+    blocked) while a provider reply is being made up, so a request meant to arrive meanwhile
+    needs its own."""
+    other = TestClient(client.app, base_url=str(client.base_url))
+    other.cookies.update(client.cookies)
+    return other
 
 
 def ask(client, token, cup, match, **kwargs):
@@ -215,6 +226,90 @@ def test_an_ask_with_nothing_to_estimate_does_not_use_up_the_limit(
     ai.replies.extend([anthropic_reply(GOOD)] * 5)
     assert [ask(client, token, cup, match_id).status_code for _ in range(5)] == [303] * 5
     assert len(ai.requests) == 5
+
+
+def test_the_button_is_switched_off_by_the_page_once_it_is_pressed(
+    client, login, csrf, db, cup, match_id, ai
+):
+    login(CAPTAIN)
+
+    page = client.get(url(cup, match_id)).text
+
+    assert 'predict-ai" data-disable-on-submit>' in page
+    assert "data-disable-on-submit" in client.get("/static/js/app.js").text
+
+
+def test_a_second_ask_while_one_is_under_way_is_refused_and_costs_nothing(
+    client, login, csrf, db, cup, match_id, ai
+):
+    login(CAPTAIN)
+    token = csrf()
+    browser = second_browser(client)
+    second = []
+
+    def answers_while_a_second_click_arrives(request):
+        # Runs while the first ask is waiting for the provider.
+        second.append(ask(browser, token, cup, match_id))
+        return anthropic_reply(GOOD)
+
+    ai.replies.extend([answers_while_a_second_click_arrives, anthropic_reply(GOOD)])
+
+    first = ask(client, token, cup, match_id)
+
+    assert second[0].status_code == 409
+    assert "already being fetched" in second[0].text
+    assert first.status_code == 303
+    assert len(ai.requests) == 1 and len(stored(db)) == 1
+    # Done: the lock is released, and the refused click did not use up an ask of the limit.
+    assert ask(client, token, cup, match_id).status_code == 303
+    assert len(ai.requests) == 2
+
+
+def test_a_failed_ask_releases_the_lock(client, login, csrf, db, cup, match_id, ai):
+    login(CAPTAIN)
+    token = csrf()
+    ai.replies.extend([httpx.Response(401), anthropic_reply(GOOD)])
+
+    assert ask(client, token, cup, match_id).status_code == 502
+    assert ask(client, token, cup, match_id).status_code == 303
+
+
+def test_one_match_under_way_does_not_block_another(client, login, csrf, db, cup, match_id, ai):
+    other = add_game(db, cup)
+    login(CAPTAIN)
+    token = csrf()
+    browser = second_browser(client)
+    results = []
+
+    def answers_while_another_match_is_asked(request):
+        results.append(ask(browser, token, cup, other))
+        return anthropic_reply(GOOD)
+
+    ai.replies.extend([answers_while_another_match_is_asked, anthropic_reply(GOOD)])
+
+    assert ask(client, token, cup, match_id).status_code == 303
+    assert results[0].status_code == 303
+
+
+def test_an_unreadable_stored_estimate_is_skipped_and_the_page_still_renders(
+    client, login, csrf, db, cup, match_id, ai, caplog
+):
+    login(CAPTAIN)
+    ai.replies.append(anthropic_reply(GOOD))
+    ask(client, csrf(), cup, match_id)
+    caplog.set_level(logging.WARNING)
+
+    for broken_payload in ("not json", "{}", '{"winner_team_id": 1}', "[1]", "null"):
+        db.execute("UPDATE predictions SET payload = ? WHERE kind = 'ai'", (broken_payload,))
+        caplog.clear()
+
+        page = client.get(url(cup, match_id))
+
+        assert page.status_code == 200, broken_payload
+        assert "No AI estimate for this match yet." in page.text
+        assert ASK in page.text  # the captain can ask again
+        assert "Skipping an unreadable AI estimate" in caplog.text
+        assert KEY not in caplog.text
 
 
 # --- failures ----------------------------------------------------------------------------------
