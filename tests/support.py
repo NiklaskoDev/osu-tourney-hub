@@ -40,6 +40,7 @@ class FakeOsu:
         self.unavailable_paths: set[str] = set()  # these URL paths always answer 503
         self.garbage_paths: set[str] = set()  # these URL paths answer 200 with a non-JSON body
         self.beatmaps: dict[int, dict] = {}
+        self.api_scores: dict[tuple[int, int], list[dict]] = {}  # (beatmap id, user id) -> scores
         self.transport = httpx.MockTransport(self._handle)
 
     def add_user(self, osu_id: int, username: str, country: str = "DE") -> None:
@@ -68,6 +69,26 @@ class FakeOsu:
             "beatmapset": {"artist": artist, "title": title, "creator": "MapperMia"},
         }
 
+    def add_api_score(self, beatmap_id: int, user_id: int, score_id: int, **fields) -> dict:
+        """A passed lazer score as `/beatmaps/{id}/scores/users/{user}/all` lists it. Keyword
+        arguments replace or add keys (`accuracy=0.97`, `mods=[{"acronym": "HD"}]`, ...)."""
+        score = {
+            "id": score_id,
+            "beatmap_id": beatmap_id,
+            "user_id": user_id,
+            "passed": True,
+            "total_score": 850_000,
+            "legacy_total_score": 1_200_000,
+            "accuracy": 0.9876,
+            "max_combo": 512,
+            "mods": [],
+            "statistics": {"great": 400, "miss": 3},
+            "ended_at": "2026-10-01T12:34:56Z",
+            **fields,
+        }
+        self.api_scores.setdefault((beatmap_id, user_id), []).append(score)
+        return score
+
     def calls(self, method: str, path_suffix: str) -> list[httpx.Request]:
         return [r for r in self.requests if r.method == method and r.url.path.endswith(path_suffix)]
 
@@ -87,6 +108,8 @@ class FakeOsu:
         if request.method == "GET" and path.startswith("/api/v2/users/"):
             return self._user(request, path.rsplit("/", 1)[1])
         if request.method == "GET" and path.startswith("/api/v2/beatmaps/"):
+            if "/scores/users/" in path:
+                return self._user_scores(request, path)
             return self._beatmap(request, path.rsplit("/", 1)[1])
         return httpx.Response(404)
 
@@ -113,6 +136,14 @@ class FakeOsu:
             return httpx.Response(401)
         beatmap = self.beatmaps.get(int(raw_id))
         return httpx.Response(200, json=beatmap) if beatmap is not None else httpx.Response(404)
+
+    def _user_scores(self, request: httpx.Request, path: str) -> httpx.Response:
+        if request.headers.get("Authorization") != f"Bearer {APP_TOKEN}":
+            return httpx.Response(401)
+        # /api/v2/beatmaps/{beatmap}/scores/users/{user}/all
+        _, _, beatmap, _, _, user, _ = path.removeprefix("/api/v2").split("/")
+        scores = self.api_scores.get((int(beatmap), int(user)))
+        return httpx.Response(200, json={"scores": scores}) if scores else httpx.Response(404)
 
     def _user(self, request: httpx.Request, raw_id: str) -> httpx.Response:
         if self.reject_lookups > 0:
@@ -179,12 +210,48 @@ class FakeWybin:
         return httpx.Response(200, json=copy.deepcopy(found))
 
 
+SHEET_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789"
+
+
+class FakeSheets:
+    """Stands in for docs.google.com: the CSV export of public sheets. No real network."""
+
+    def __init__(self) -> None:
+        self.sheets: dict[str, str] = {}  # sheet id -> CSV text
+        self.requests: list[httpx.Request] = []
+        self.status = 200  # answered instead of the sheet when not 200
+        self.content_type = "text/csv; charset=utf-8"
+        self.redirect_to: str | None = None  # every request is redirected there
+        self.redirect_once_to: str | None = None  # only the next request is
+        self.transport = httpx.MockTransport(self.handle)
+
+    def paths(self) -> list[str]:
+        return [f"{request.url.path}?{request.url.query.decode()}" for request in self.requests]
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if self.redirect_once_to is not None:
+            target, self.redirect_once_to = self.redirect_once_to, None
+            return httpx.Response(307, headers={"Location": target})
+        if self.redirect_to is not None:
+            return httpx.Response(307, headers={"Location": self.redirect_to})
+        if self.status != 200:
+            return httpx.Response(self.status, text="nope")
+        parts = request.url.path.split("/")  # "", spreadsheets, d, <id>, export
+        sheet = self.sheets.get(parts[3]) if len(parts) == 5 and parts[4] == "export" else None
+        if sheet is None:
+            return httpx.Response(404, text="not found")
+        return httpx.Response(200, text=sheet, headers={"Content-Type": self.content_type})
+
+
 class NoRealNetwork:
     """Routes each request to the fake of its host. Any other host fails the test: tests never
     reach the internet."""
 
-    def __init__(self, osu: FakeOsu, wybin: FakeWybin) -> None:
+    def __init__(self, osu: FakeOsu, wybin: FakeWybin, sheets: FakeSheets | None = None) -> None:
         self._hosts = {"osu.ppy.sh": osu._handle, "wybin.xyz": wybin.handle}
+        if sheets is not None:
+            self._hosts["docs.google.com"] = sheets.handle
         self.transport = httpx.MockTransport(self._route)
 
     def _route(self, request: httpx.Request) -> httpx.Response:

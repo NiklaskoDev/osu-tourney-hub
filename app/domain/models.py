@@ -202,6 +202,22 @@ class Score:
 
 
 @dataclass(frozen=True)
+class ApiScore:
+    """A passed score as the osu! API reports it, already in the app's units: `mods` canonical,
+    `accuracy` 0 to 100, `total_score` the lazer standardised score."""
+
+    score_id: int
+    beatmap_id: int
+    osu_id: int
+    mods: str
+    total_score: int
+    accuracy: float
+    max_combo: int | None
+    misses: int | None
+    achieved_at: str | None
+
+
+@dataclass(frozen=True)
 class Note:
     id: int
     tournament_id: int

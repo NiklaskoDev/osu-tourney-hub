@@ -13,7 +13,14 @@ from app.clients.ratelimit import RateLimiter
 from app.config import Settings
 from app.db.connection import open_db
 from app.main import create_app
-from tests.support import ADMIN_ID, FakeOsu, FakeWybin, NoRealNetwork, add_test_login
+from tests.support import (
+    ADMIN_ID,
+    FakeOsu,
+    FakeSheets,
+    FakeWybin,
+    NoRealNetwork,
+    add_test_login,
+)
 
 BASE_URL = "https://tourney.example.com"  # secure cookies are only sent over https
 CSRF_INPUT = re.compile(r'name="csrf_token" value="([^"]+)"')
@@ -61,14 +68,19 @@ def wybin() -> FakeWybin:
 
 
 @pytest.fixture
+def sheets() -> FakeSheets:
+    return FakeSheets()
+
+
+@pytest.fixture
 def osu_delays() -> list[float]:
     """Back-off delays the osu! client asked for. Tests never really sleep."""
     return []
 
 
 @pytest.fixture
-def app(settings, clock, osu, wybin, osu_delays) -> FastAPI:
-    network = NoRealNetwork(osu, wybin)
+def app(settings, clock, osu, wybin, sheets, osu_delays) -> FastAPI:
+    network = NoRealNetwork(osu, wybin, sheets)
     built = create_app(settings, clock, http_transport=network.transport, start_workers=False)
     add_test_login(built)
 

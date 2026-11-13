@@ -1,0 +1,158 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% block title %}Import scores - {{ tournament.name }} - {% endblock %}
+
+{% macro hidden_csv() -%}
+<textarea name="csv_text" hidden>{{ csv_text }}</textarea>
+{%- endmacro %}
+
+{% block tournament_content %}
+<div class="page__header">
+  <h1>Import scores</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}Scores cannot be imported. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+{% if upload_error %}
+{% call alert("error", "Nothing was imported") %}{{ upload_error }}{% endcall %}
+{% endif %}
+{% if import_error %}
+{% call alert("error", "Nothing was imported") %}{{ import_error }}{% endcall %}
+{% endif %}
+
+{% if not stage %}
+{{ empty_state("This tournament has no stages yet, so there is nothing to import into.") }}
+{% elif csv_text is defined %}
+
+{% if plan %}
+<section class="stack" aria-labelledby="result-heading">
+  <h2 id="result-heading">What will be imported</h2>
+  <p>{{ plan.total }} {{ "row" if plan.total == 1 else "rows" }} read in {{ stage.name }}: <strong>{{ plan.scores|length }} new</strong>, {{ plan.duplicates }} already on the sheet, {{ plan.problems|length }} that cannot be imported. Scores are saved as {{ scoring_label }} scores, like scores added by hand.</p>
+
+  {% if sample %}
+  {% call table("The first scores that will be imported") %}
+  <thead>
+    <tr>
+      <th scope="col">Line</th>
+      <th scope="col">Player</th>
+      <th scope="col">Map</th>
+      <th scope="col" class="is-numeric">Score</th>
+      <th scope="col" class="is-numeric">Accuracy</th>
+      <th scope="col" class="is-numeric">Misses</th>
+      <th scope="col">Mods</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in sample %}
+    <tr>
+      <td class="is-numeric">{{ row.line }}</td>
+      <th scope="row">{{ row.player }}</th>
+      <td>{{ badge(row.pool_map.slot) }}</td>
+      <td class="is-numeric">{{ row.score|fmt_score }}</td>
+      <td class="is-numeric">{{ row.accuracy|fmt_acc }}</td>
+      <td class="is-numeric">{{ row.misses if row.misses is not none else "-" }}</td>
+      <td>{{ row.mods|mods }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  {% if plan.scores|length > sample|length %}<p class="muted">And {{ plan.scores|length - sample|length }} more.</p>{% endif %}
+  {% endif %}
+
+  {% if unknown_players %}
+  <div class="stack">
+    <h3>Not on the roster</h3>
+    <p>{{ unknown_players|join(", ") }}{% if more_unknown %} and {{ more_unknown }} more{% endif %}. Add them on the Members page, or fix the spelling in the file, then check again.</p>
+  </div>
+  {% endif %}
+
+  {% if shown_problems %}
+  <div class="stack">
+    <h3>Rows that cannot be imported</h3>
+    {% call table("Rows that cannot be imported") %}
+    <thead>
+      <tr>
+        <th scope="col">Line</th>
+        <th scope="col">Problem</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for problem in shown_problems %}
+      <tr>
+        <td class="is-numeric">{{ problem.line }}</td>
+        <td>{{ problem.message }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    {% if more_problems %}<p class="muted">And {{ more_problems }} more.</p>{% endif %}
+  </div>
+  {% endif %}
+
+  <form class="stack" method="post" action="/t/{{ tournament.id }}/import/commit">
+    {{ csrf_field(csrf_token) }}
+    {{ hidden_csv() }}
+    <input type="hidden" name="stage" value="{{ stage.id }}">
+    {% for name, label, current in mapping_fields %}
+    <input type="hidden" name="map_{{ name }}" value="{{ current }}">
+    {% endfor %}
+    <p class="muted">Rows already on the sheet (same player, map, mods and score) are skipped, so importing a file twice adds nothing.</p>
+    <div>{{ button("Import " ~ plan.scores|length ~ (" score" if plan.scores|length == 1 else " scores"), variant="primary", type="submit", disabled=(not plan.scores or archived)) }}</div>
+  </form>
+</section>
+{% endif %}
+
+<details class="map-detail"{% if mapping_problems %} open{% endif %}>
+  <summary><span class="map-detail__title">Columns and stage</span> <span class="muted">Check which column holds what</span></summary>
+  <div class="stack map-detail__body">
+    <p class="muted">Rows are matched to the roster by osu! id or player name, and to the pool by map slot or beatmap id. After changing a column or the stage, update the preview before importing.</p>
+    {% for problem in mapping_problems %}
+    {% call alert("warning", "A column is missing") %}{{ problem }}{% endcall %}
+    {% endfor %}
+    <form class="stack" method="post" action="/t/{{ tournament.id }}/import/preview">
+      {{ csrf_field(csrf_token) }}
+      {{ hidden_csv() }}
+      {{ field("stage", "Stage", options=stage_options, value=stage.id|string, required=true, id="import-stage", hint="Map slots such as NM1 are read in this stage.") }}
+      <div class="row row--top">
+        {% for name, label, current in mapping_fields %}
+        {{ field("map_" ~ name, label, options=column_options, value=current, required=true, id="import-col-" ~ name) }}
+        {% endfor %}
+      </div>
+      <div>{{ button("Update preview", variant="secondary", type="submit") }}</div>
+    </form>
+  </div>
+</details>
+
+{% elif not archived %}
+
+<section class="stack" aria-labelledby="file-heading">
+  <h2 id="file-heading">From a CSV file</h2>
+  <p class="muted">One row per score. The first row names the columns: a map slot or beatmap id, a player name or osu! id, a score and an accuracy; misses and mods are optional. A file made by "Export CSV" on the pool page works. At most 5000 rows and 1 MB.</p>
+  <form class="stack" method="post" action="/t/{{ tournament.id }}/import" enctype="multipart/form-data">
+    {{ csrf_field(csrf_token) }}
+    <input type="hidden" name="stage" value="{{ stage.id }}">
+    {{ field("file", "CSV file", kind="file", required=true, id="import-file", accept=".csv,text/csv,text/plain") }}
+    <div>{{ button("Check file", variant="primary", type="submit") }}</div>
+  </form>
+</section>
+
+<section class="stack" aria-labelledby="sheet-heading">
+  <h2 id="sheet-heading">From a Google Sheet</h2>
+  <p class="muted">Share the sheet with "Anyone with the link" as viewer, then paste its address. Only links on docs.google.com work; the tab in the link is the one that is read.</p>
+  <form class="stack" method="post" action="/t/{{ tournament.id }}/import">
+    {{ csrf_field(csrf_token) }}
+    <input type="hidden" name="stage" value="{{ stage.id }}">
+    {{ field("link", "Google Sheets link", kind="url", value=link_value|default(""), required=true, id="import-link", autocomplete="off", placeholder="https://docs.google.com/spreadsheets/d/...") }}
+    <div>{{ button("Check sheet", variant="secondary", type="submit") }}</div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

@@ -96,6 +96,23 @@ The app reads wybin anonymously and only reads: at most one request every `WYBIN
 seconds, and nothing is ever written back. wybin has no published API terms, so its response
 format may change; the Admin page then shows a failed job and keeps the stored data.
 
+## Scores from osu!, CSV export and import
+
+The app pulls each roster player's scores on the maps of the current and the next stage from the
+osu! API (ranked and loved maps only; osu! keeps nothing for others). New pulls are queued after a
+pool sync and every hour, and skipped when the same player and map were pulled within
+`CAPTURE_REFRESH_HOURS`. "Refresh my scores" on the Pool page queues your own pulls at once (once per
+10 minutes); captains can pull a whole team (once per team per hour). Pulls share the osu! rate
+limit at a lower priority than anything a person is waiting for. Captured scores are lazer
+standardised scores, so they count in tournaments whose scoring is set to lazer on the Settings page.
+
+The Pool page has "Export CSV" (everyone on the roster) and, for captains, "Import scores": upload a
+CSV file (up to 1 MB and 5000 rows, UTF-8) or paste the link of a Google Sheet shared with "Anyone
+with the link". Only `https://docs.google.com/spreadsheets/d/...` links are accepted and only
+docs.google.com is contacted. The import shows a preview with the detected columns and every refused
+row before anything is stored; scores already on the sheet are skipped. The Lineup page exports the
+saved lineup.
+
 ## Configuration
 
 All settings are environment variables. `.env.example` lists them with comments.
@@ -116,7 +133,7 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `SCANNER_WORKERS` | 4 | parallel scanner tasks, 1 to 8 |
 | `SCANNER_MAX_BACKLOG` | 5000 | lobby ids the scanner may lag before it skips ahead |
 | `SCANNER_OPEN_MAX_HOURS` | 24 | open lobbies are finalised after this |
-| `CAPTURE_REFRESH_HOURS` | 24 | minimum hours before a player's map score is fetched again |
+| `CAPTURE_REFRESH_HOURS` | 24 | minimum hours before a player's map score is fetched again, at least 1 |
 | `LIVE_POLL_SECONDS` | 10 | live match mode polling, minimum 5 |
 | `AI_PROVIDER` | empty (off) | optional AI predictions |
 | `AI_API_KEY` | empty, secret | not needed for a local endpoint |
@@ -126,8 +143,8 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `DATA_DIR` | `/data` | set by the image; change only outside Docker |
 
 Read by this version: the five required variables, `OSU_API_RATE_PER_MIN`, `WYBIN_POLL_MINUTES`,
-`WYBIN_MIN_INTERVAL_SECONDS`, `LOG_LEVEL`, `DATA_DIR` (and `PUID`/`PGID` by the container start-up
-script). The variables from `SCANNER_ENABLED` down to `AI_BASE_URL` are not read yet; they only take
+`WYBIN_MIN_INTERVAL_SECONDS`, `CAPTURE_REFRESH_HOURS`, `LOG_LEVEL`, `DATA_DIR` (and `PUID`/`PGID` by
+the container start-up script). The other variables from `SCANNER_ENABLED` down to `AI_BASE_URL` are not read yet; they only take
 effect in the versions that add the matching feature, and setting them now changes nothing.
 
 ## Local development

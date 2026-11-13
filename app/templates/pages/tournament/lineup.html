@@ -118,6 +118,7 @@
   {% if saved %}
   <p class="muted">{{ badge("Final" if saved.status == "final" else "Draft") }} Saved {{ local_time(saved.updated_at) }}</p>
   {% endif %}
+  {% if saved %}<div>{{ button("Export CSV", variant="secondary", icon_name="download", href="/t/" ~ tournament.id ~ "/export/lineup.csv?stage=" ~ stage.id) }}</div>{% endif %}
 
   {% if can_manage %}
   <form class="stack" method="post" action="/t/{{ tournament.id }}/lineup">

@@ -339,3 +339,121 @@ async def test_missing_optional_beatmap_fields_become_none(osu_client, osu):
 
     assert (beatmap.artist, beatmap.title, beatmap.mapper) == (None, None, None)
     assert (beatmap.star_rating, beatmap.bpm, beatmap.length_s, beatmap.cs) == (None,) * 4
+
+
+# --- scores of one player on one beatmap (score capture) ---
+
+CATCH, MANIA = 2, 3
+
+
+async def test_user_beatmap_scores_are_mapped_to_the_apps_units(osu_client, osu):
+    osu.add_api_score(
+        1001,
+        2002,
+        9001,
+        total_score=912_345,
+        accuracy=0.98765,
+        max_combo=700,
+        mods=[{"acronym": "HD"}, {"acronym": "DT", "settings": {"speed_change": 1.5}}],
+        statistics={"miss": 2},
+        ended_at="2026-10-01T14:30:00+02:00",
+    )
+
+    (score,) = await osu_client.get_user_beatmap_scores(1001, 2002, 0)
+
+    assert score.score_id == 9001
+    assert (score.beatmap_id, score.osu_id) == (1001, 2002)
+    assert score.total_score == 912_345  # the lazer standardised score, not legacy_total_score
+    assert score.accuracy == 98.765  # a 0 to 1 fraction becomes a percentage
+    assert score.max_combo == 700 and score.misses == 2
+    assert score.mods == "DTHD"  # canonical: sorted acronyms
+    assert score.achieved_at == "2026-10-01T12:30:00Z"  # converted to UTC
+
+
+async def test_mods_may_be_plain_acronyms_and_classic_and_nofail_are_ignored(osu_client, osu):
+    osu.add_api_score(1001, 2002, 9001, mods=["HR", "NF", "CL"])
+    osu.add_api_score(1001, 2002, 9002, mods=[{"acronym": "CL"}])
+
+    scores = await osu_client.get_user_beatmap_scores(1001, 2002, 0)
+
+    assert [s.mods for s in scores] == ["HR", ""]
+
+
+@pytest.mark.parametrize(
+    ("statistics", "misses"),
+    [({"miss": 4}, 4), ({"count_miss": 5}, 5), ({"miss": 1, "count_miss": 9}, 1), ({}, None)],
+)
+async def test_misses_are_read_from_either_statistics_key(osu_client, osu, statistics, misses):
+    osu.add_api_score(1001, 2002, 9001, statistics=statistics)
+
+    (score,) = await osu_client.get_user_beatmap_scores(1001, 2002, 0)
+
+    assert score.misses == misses
+
+
+async def test_unusable_scores_are_left_out_and_good_ones_kept(osu_client, osu):
+    osu.add_api_score(1001, 2002, 9001)  # kept
+    osu.add_api_score(1001, 2002, 9002, passed=False)
+    osu.add_api_score(1001, 2002, 9003, accuracy=1.5)
+    osu.add_api_score(1001, 2002, 9004, total_score=None)
+    osu.add_api_score(1001, 2002, 9005, mods=[{"acronym": "WU"}])  # a mod osu! does not have
+    osu.add_api_score(1001, 2002, 9006, mods=["RX"] + [{"acronym": 5}])
+    osu.add_api_score(1001, 2002, 0)  # not a real score id
+    del osu.api_scores[(1001, 2002)][0]["passed"]  # "passed" missing: not proven passed
+
+    assert await osu_client.get_user_beatmap_scores(1001, 2002, 0) == []
+
+
+async def test_a_missing_or_garbled_date_leaves_the_score_undated(osu_client, osu):
+    osu.add_api_score(1001, 2002, 9001, ended_at=None)
+    osu.add_api_score(1001, 2002, 9002, ended_at="last tuesday")
+    osu.add_api_score(1001, 2002, 9003, ended_at="2026-10-01T12:00:00")  # no zone: read as UTC
+
+    scores = await osu_client.get_user_beatmap_scores(1001, 2002, 0)
+
+    assert [s.achieved_at for s in scores] == [None, None, "2026-10-01T12:00:00Z"]
+
+
+async def test_the_mode_is_sent_by_its_api_name_and_mods_follow_the_mode(osu_client, osu):
+    osu.add_api_score(1001, 2002, 9001, mods=["HR"])  # Hard Rock exists in catch ...
+    osu.add_api_score(1001, 2002, 9002, mods=["K4"])  # ... a key mod does not
+
+    scores = await osu_client.get_user_beatmap_scores(1001, 2002, CATCH)
+
+    assert [s.score_id for s in scores] == [9001]
+    assert osu.requests[-1].url.params["mode"] == "fruits"
+    mania = await osu_client.get_user_beatmap_scores(1001, 2002, MANIA)
+    assert [s.score_id for s in mania] == [9002]
+    assert osu.requests[-1].url.params["mode"] == "mania"
+
+
+async def test_a_map_osu_has_no_scores_for_gives_an_empty_list(osu_client, osu):
+    assert await osu_client.get_user_beatmap_scores(7777, 2002, 0) == []  # the API answers 404
+
+
+async def test_score_requests_use_the_capture_priority_unless_told_otherwise(
+    osu_client, osu, limiter
+):
+    osu.add_api_score(1001, 2002, 9001)
+
+    await osu_client.get_user_beatmap_scores(1001, 2002, 0)
+    await osu_client.get_user_beatmap_scores(1001, 2002, 0, Priority.INTERACTIVE)
+
+    assert limiter.priorities[-2:] == [Priority.CAPTURE, Priority.INTERACTIVE]
+
+
+async def test_score_lookups_that_keep_failing_raise_unavailable(osu_client, osu, delays):
+    osu.add_api_score(1001, 2002, 9001)
+    osu.unavailable_paths.add("/api/v2/beatmaps/1001/scores/users/2002/all")
+
+    with pytest.raises(OsuUnavailable):
+        await osu_client.get_user_beatmap_scores(1001, 2002, 0)
+
+    assert len(delays) == MAX_ATTEMPTS - 1
+
+
+async def test_a_scores_answer_of_the_wrong_shape_raises_unavailable(osu_client, osu):
+    osu.api_scores[(1001, 2002)] = {"not": "a list"}  # served as {"scores": {...}}
+
+    with pytest.raises(OsuUnavailable):
+        await osu_client.get_user_beatmap_scores(1001, 2002, 0)

@@ -219,13 +219,24 @@ def test_the_last_captain_cannot_be_removed(client, login, csrf, tid, db):
     assert stored(db, tid, 2001) is not None
 
 
-def test_a_co_captain_does_not_count_as_the_captain(client, db, login, csrf, tid):
-    add_member(db, tid, 2003, "co_captain")
+def test_an_admin_cannot_swap_the_last_captain_for_a_co_captain(client, db, login, csrf, tid):
+    add_member(db, tid, 2003, "co_captain")  # a co-captain does not count as another captain
     login(ADMIN_ID)
 
     response = client.post(f"/t/{tid}/members/2001", data={**csrf(), "role": "co_captain"})
 
     assert response.status_code == 409
+    assert stored(db, tid, 2001)[0] == "captain"
+
+
+def test_a_co_captain_cannot_demote_the_last_captain(client, db, login, csrf, tid):
+    add_member(db, tid, 2003, "co_captain")
+    login(2003)
+
+    response = client.post(f"/t/{tid}/members/2001", data={**csrf(), "role": "player"})
+
+    assert response.status_code == 403
+    assert "captain or an administrator" in response.text
     assert stored(db, tid, 2001)[0] == "captain"
 
 

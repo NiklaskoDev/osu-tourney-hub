@@ -6,12 +6,25 @@ from datetime import timedelta
 import pytest
 from fastapi.testclient import TestClient
 
+from app.clients.osu import OsuUnavailable
 from app.clients.wybin_models import WybinUnavailable
 from app.db.connection import open_db
 from app.main import create_app
 from app.repos import jobs as jobs_repo
-from app.workers.jobs import SYNC_ACTIVE, TRACK_SIGNUPS, build_jobs
-from app.workers.scheduler import GENERIC_ERROR_TEXT, WYBIN_ERROR_TEXT, Job, Scheduler
+from app.workers.jobs import (
+    CAPTURE_DRAIN,
+    CAPTURE_ENQUEUE,
+    SYNC_ACTIVE,
+    TRACK_SIGNUPS,
+    build_jobs,
+)
+from app.workers.scheduler import (
+    GENERIC_ERROR_TEXT,
+    OSU_ERROR_TEXT,
+    WYBIN_ERROR_TEXT,
+    Job,
+    Scheduler,
+)
 from tests.conftest import BASE_URL
 from tests.support import NoRealNetwork, add_test_login
 
@@ -30,6 +43,10 @@ def state(db, name):
 
 def run(coroutine):
     return asyncio.run(coroutine)
+
+
+def app_jobs(app, settings, clock) -> list[Job]:
+    return build_jobs(settings, clock, app.state.wybin, app.state.osu)
 
 
 def job(name, action, hours=1) -> Job:
@@ -62,6 +79,18 @@ def test_a_wybin_failure_is_recorded_as_generic_text_without_the_details(db, sch
     assert "secret-path" not in row.last_error and "token" not in row.last_error
     assert row.last_ok_at is None
     assert row.last_run_at is not None
+
+
+def test_an_osu_failure_is_recorded_as_generic_text_without_the_details(db, scheduler_for):
+    async def down() -> None:
+        raise OsuUnavailable("osu! did not answer /api/v2/users/424242 after 5 tries")
+
+    assert run(scheduler_for().run_once(job("demo", down))) is False
+
+    row = state(db, "demo")
+    assert row.last_error == OSU_ERROR_TEXT
+    assert "424242" not in row.last_error and "/api" not in row.last_error
+    assert row.last_ok_at is None
 
 
 def test_an_unexpected_error_is_recorded_generically_and_logged(db, scheduler_for, caplog):
@@ -181,12 +210,14 @@ def test_a_job_can_be_looked_up_by_name(scheduler_for):
 # --- the app's own jobs ---
 
 
-def test_the_app_registers_the_wybin_jobs_with_the_configured_interval(app, settings, clock):
-    jobs = {item.name: item for item in build_jobs(settings, clock, app.state.wybin)}
+def test_the_app_registers_its_jobs_with_the_configured_interval(app, settings, clock):
+    jobs = {item.name: item for item in app_jobs(app, settings, clock)}
 
-    assert set(jobs) == {TRACK_SIGNUPS, SYNC_ACTIVE}
+    assert set(jobs) == {TRACK_SIGNUPS, SYNC_ACTIVE, CAPTURE_ENQUEUE, CAPTURE_DRAIN}
     assert jobs[TRACK_SIGNUPS].interval == timedelta(hours=6)
     assert jobs[SYNC_ACTIVE].interval == timedelta(minutes=30)
+    assert jobs[CAPTURE_ENQUEUE].interval == timedelta(hours=1)
+    assert jobs[CAPTURE_DRAIN].interval == timedelta(minutes=1)
 
 
 def test_workers_start_with_the_app_and_stop_with_it(settings, clock, osu, wybin):
@@ -226,9 +257,7 @@ def test_a_partial_failure_is_recorded_with_its_counts_and_no_false_promise(
     from tests.support import add_user
 
     add_user(db, 1001, "AdminAmy")
-    sync_job = {item.name: item for item in build_jobs(settings, clock, app.state.wybin)}[
-        SYNC_ACTIVE
-    ]
+    sync_job = {item.name: item for item in app_jobs(app, settings, clock)}[SYNC_ACTIVE]
     scheduler = Scheduler(settings.db_path, clock, [sync_job])
     from app.services.wybin_sync import import_tournament
 

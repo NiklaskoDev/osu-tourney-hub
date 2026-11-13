@@ -6,7 +6,7 @@ import pytest
 from app.repos import deleted_tournaments as deleted_repo
 from app.repos import jobs as jobs_repo
 from app.repos import wybin_links as links_repo
-from app.workers.jobs import SYNC_ACTIVE, TRACK_SIGNUPS
+from app.workers.jobs import JOB_LABELS, SYNC_ACTIVE, TRACK_SIGNUPS
 from app.workers.scheduler import GENERIC_ERROR_TEXT
 from tests.support import ADMIN_ID, add_member, add_tournament
 
@@ -110,7 +110,8 @@ def test_the_console_lists_every_tournament_with_its_state(client, as_admin, db)
 
 def test_the_console_shows_job_state_with_generic_errors(client, as_admin, db):
     page = client.get("/admin").text
-    assert page.count("Waiting for the first run") == 2
+    assert page.count("Waiting for the first run") == len(JOB_LABELS)
+    assert "Pull queued scores from osu!" in page
 
     jobs_repo.record_start(db, SYNC_ACTIVE, "2026-11-12T12:00:00Z")
     jobs_repo.record_failure(db, SYNC_ACTIVE, GENERIC_ERROR_TEXT)

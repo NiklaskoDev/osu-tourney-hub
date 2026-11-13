@@ -74,6 +74,7 @@ def _page(
         "old_scores_hint": OLD_SCORES_HINT,
         "can_write": access.role >= Role.PLAYER,
         "can_manage": access.role >= Role.CAPTAIN,
+        "can_refresh": access.member is not None and access.member.role != "guest",
         "mod_choices": selectable_mods(tournament.gamemode),
         **extra,
     }

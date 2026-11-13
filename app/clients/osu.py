@@ -8,7 +8,7 @@ shared rate limiter first. User tokens are used once to read `/me` and are never
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -20,9 +20,10 @@ from fastapi.responses import RedirectResponse
 
 from app.clients.http import REQUEST_TIMEOUT
 from app.clients.ratelimit import Priority, RateLimiter
-from app.clock import Clock
+from app.clock import Clock, to_utc_iso
 from app.config import Settings
-from app.domain.models import BeatmapMeta, OsuProfile
+from app.domain.models import ApiScore, BeatmapMeta, OsuProfile
+from app.domain.modes import API_MODE_NAMES, canonical_mods
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ TOKEN_EXPIRY_MARGIN_S = 60
 MAX_USERNAME_LENGTH = 64
 MAX_METADATA_LENGTH = 200
 AVATAR_HOSTS = frozenset({"a.ppy.sh", "assets.ppy.sh"})
+MAX_API_SCORE = 2_000_000_000  # what the scores table accepts
+# osu!lazer's Classic mod only changes how the score is displayed; tournaments ignore it like NF.
+IGNORED_LAZER_MODS = frozenset({"CL"})
 
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -139,6 +143,25 @@ class OsuClient:
         if beatmap.beatmap_id != beatmap_id:
             raise OsuUnavailable("osu! returned a different beatmap")
         return beatmap
+
+    async def get_user_beatmap_scores(
+        self,
+        beatmap_id: int,
+        osu_id: int,
+        gamemode: int,
+        priority: Priority = Priority.CAPTURE,
+    ) -> list[ApiScore]:
+        """Every passed score of one player on one beatmap, one per mod combination they played.
+
+        osu! only keeps scores for ranked and loved maps; for any other map or a hidden user it
+        answers 404, which is an empty list here, not an error.
+        """
+        url = f"{API_BASE}/beatmaps/{beatmap_id}/scores/users/{osu_id}/all"
+        try:
+            data = await self._app_get(url, priority, {"mode": API_MODE_NAMES[gamemode]})
+        except OsuNotFound:
+            return []
+        return _parse_api_scores(data, beatmap_id, osu_id, gamemode)
 
     async def _app_get(
         self, url: str, priority: Priority, params: dict[str, str] | None = None
@@ -301,3 +324,89 @@ def _number_or_none(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         return None
     return float(value)
+
+
+def _parse_api_scores(
+    data: dict[str, Any], beatmap_id: int, osu_id: int, gamemode: int
+) -> list[ApiScore]:
+    """Keep the passed scores that fit the scores table; leave out any that do not (a mod this
+    mode does not have, a missing or impossible number)."""
+    raw = data.get("scores")
+    if not isinstance(raw, list):
+        raise OsuUnavailable("osu! sent scores in an unexpected shape")
+    found = (_parse_api_score(item, beatmap_id, osu_id, gamemode) for item in raw)
+    return [score for score in found if score is not None]
+
+
+def _parse_api_score(item: object, beatmap_id: int, osu_id: int, gamemode: int) -> ApiScore | None:
+    if not isinstance(item, dict) or item.get("passed") is not True:
+        return None
+    score_id = _int_or_none(item.get("id"))
+    total = _int_or_none(item.get("total_score"))
+    accuracy = _number_or_none(item.get("accuracy"))
+    mods = _api_mods(item.get("mods"), gamemode)
+    if (
+        score_id is None
+        or score_id <= 0
+        or total is None
+        or not 0 <= total <= MAX_API_SCORE
+        or accuracy is None
+        or not 0 <= accuracy <= 1
+        or mods is None
+    ):
+        logger.debug("Left out an unusable osu! score on beatmap %s", beatmap_id)
+        return None
+    statistics = item.get("statistics")
+    return ApiScore(
+        score_id=score_id,
+        beatmap_id=beatmap_id,
+        osu_id=osu_id,
+        mods=mods,
+        total_score=total,
+        accuracy=round(accuracy * 100, 4),
+        max_combo=_count_or_none(item.get("max_combo")),
+        misses=_misses(statistics if isinstance(statistics, dict) else {}),
+        achieved_at=_utc_iso_or_none(item.get("ended_at")),
+    )
+
+
+def _api_mods(raw: object, gamemode: int) -> str | None:
+    """Canonical mods from a list of acronyms or `{"acronym": ...}` objects; None when the mode
+    does not have one of them."""
+    if not isinstance(raw, list):
+        return ""
+    acronyms = []
+    for mod in raw:
+        acronym = mod.get("acronym") if isinstance(mod, dict) else mod
+        if not isinstance(acronym, str):
+            return None
+        if acronym.upper() not in IGNORED_LAZER_MODS:
+            acronyms.append(acronym)
+    try:
+        return canonical_mods(acronyms, gamemode)
+    except ValueError:
+        return None
+
+
+def _misses(statistics: dict[str, Any]) -> int | None:
+    """`miss` in lazer statistics, `count_miss` in the older shape."""
+    for key in ("miss", "count_miss"):
+        value = _count_or_none(statistics.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _count_or_none(value: object) -> int | None:
+    number = _int_or_none(value)
+    return number if number is not None and number >= 0 else None
+
+
+def _utc_iso_or_none(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return to_utc_iso(moment if moment.tzinfo else moment.replace(tzinfo=UTC))

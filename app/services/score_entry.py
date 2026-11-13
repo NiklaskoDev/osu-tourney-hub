@@ -71,11 +71,11 @@ def record_score(
         osu_id=player,
         gamemode=tournament.gamemode,
         mods=_mods(pool_map, form.mods, tournament.gamemode),
-        score=_score(form.score),
+        score=parse_score(form.score),
         scoring=tournament.scoring,
-        accuracy=_accuracy(form.accuracy),
-        max_combo=_optional_count(form.max_combo, "max_combo", "Combo"),
-        misses=_optional_count(form.misses, "misses", "Misses"),
+        accuracy=parse_accuracy(form.accuracy),
+        max_combo=parse_optional_count(form.max_combo, "max_combo", "Combo"),
+        misses=parse_optional_count(form.misses, "misses", "Misses"),
         source_url=_link(form.link),
         entered_by=actor.osu_id,
         tournament_id=tournament.id,
@@ -159,7 +159,7 @@ def _player(conn: sqlite3.Connection, tournament_id: int, actor: Actor, raw_id: 
     return member.osu_id
 
 
-def _score(text: str) -> int:
+def parse_score(text: str) -> int:
     value = parse_uint(text.translate(_SCORE_SEPARATORS))
     if value is None or value > MAX_SCORE:
         raise EntryError(
@@ -168,7 +168,7 @@ def _score(text: str) -> int:
     return value
 
 
-def _accuracy(text: str) -> float:
+def parse_accuracy(text: str) -> float:
     found = _ACCURACY.fullmatch(text.strip())
     value = float(f"{found.group(1)}.{found.group(2) or 0}") if found else None
     if value is None or value > 100:
@@ -178,7 +178,7 @@ def _accuracy(text: str) -> float:
     return value
 
 
-def _optional_count(text: str, field_name: str, label: str) -> int | None:
+def parse_optional_count(text: str, field_name: str, label: str) -> int | None:
     if not text.strip():
         return None
     value = parse_uint(text)

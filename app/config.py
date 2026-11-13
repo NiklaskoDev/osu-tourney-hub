@@ -26,6 +26,7 @@ DEFAULT_WYBIN_POLL_MINUTES = 30
 MIN_WYBIN_POLL_MINUTES = 10
 DEFAULT_WYBIN_MIN_INTERVAL_SECONDS = 2
 MAX_WYBIN_MIN_INTERVAL_SECONDS = 60
+DEFAULT_CAPTURE_REFRESH_HOURS = 24
 
 
 class ConfigError(Exception):
@@ -56,6 +57,7 @@ class Settings:
     osu_api_rate_per_min: int
     wybin_poll_minutes: int = DEFAULT_WYBIN_POLL_MINUTES
     wybin_min_interval_seconds: int = DEFAULT_WYBIN_MIN_INTERVAL_SECONDS
+    capture_refresh_hours: int = DEFAULT_CAPTURE_REFRESH_HOURS
 
     @property
     def db_path(self) -> Path:
@@ -117,6 +119,12 @@ class Settings:
                 f"must be a number from 1 to {MAX_WYBIN_MIN_INTERVAL_SECONDS}"
             )
 
+        capture_hours = _parse_int(
+            environ.get("CAPTURE_REFRESH_HOURS", ""), DEFAULT_CAPTURE_REFRESH_HOURS, 1
+        )
+        if capture_hours is None:
+            invalid["CAPTURE_REFRESH_HOURS"] = "must be a number of at least 1"
+
         if missing or invalid:
             raise ConfigError(missing, invalid)
 
@@ -131,6 +139,7 @@ class Settings:
             osu_api_rate_per_min=osu_api_rate,
             wybin_poll_minutes=wybin_poll,
             wybin_min_interval_seconds=wybin_interval,
+            capture_refresh_hours=capture_hours,
         )
 
 

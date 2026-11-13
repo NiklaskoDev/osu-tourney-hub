@@ -223,3 +223,21 @@ def test_wybin_interval_outside_1_to_60_seconds_is_rejected(valid_env, raw):
         Settings.from_env(valid_env)
 
     assert list(caught.value.invalid) == ["WYBIN_MIN_INTERVAL_SECONDS"]
+
+
+def test_capture_refresh_hours_defaults_to_24_and_is_read_from_the_environment(valid_env):
+    assert Settings.from_env(valid_env).capture_refresh_hours == 24
+
+    valid_env["CAPTURE_REFRESH_HOURS"] = "6"
+
+    assert Settings.from_env(valid_env).capture_refresh_hours == 6
+
+
+@pytest.mark.parametrize("raw", ["0", "-1", "x", "1.5"])
+def test_capture_refresh_hours_below_one_or_not_a_number_is_rejected(valid_env, raw):
+    valid_env["CAPTURE_REFRESH_HOURS"] = raw
+
+    with pytest.raises(ConfigError) as caught:
+        Settings.from_env(valid_env)
+
+    assert list(caught.value.invalid) == ["CAPTURE_REFRESH_HOURS"]

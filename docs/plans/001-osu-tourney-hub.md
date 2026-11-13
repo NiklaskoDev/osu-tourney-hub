@@ -315,6 +315,7 @@ Each phase is one branch `feat/<phase-slug>`, one PR, ends with tests, ruff clea
 4. `/me/feed-token` + `/feeds/{token}.ics` (`services/ical.py`, UID `match-<id>@osu-tourney-hub`, DTSTART UTC, 1.5 h default duration as named constant).
 5. Lineup page: enable "only players available at match time".
 6. Tests: UTC/local conversion incl. DST change (Europe/Berlin) and offset-only wybin timezone `UTC+5:30`; storing local selection writes correct UTC slot; overlay at correct slot; `best_slots` ranking deterministic; opponent outside 10–23 local penalised; iCal output validates (CRLF, folded lines ≤ 75 octets, escaping), revoked token → 404; availability filter in lineup suggestion.
+7. Deferred from phase 4 (the tables did not exist yet): the automatic capture for the next scheduled opponent (queue their players at a lower priority than `PRIORITY_AUTOMATIC` with `skip_within`, e.g. in the daily job, once `matches` exist), the "Pull scores" button for a team on the match page posting to the existing `POST /t/{tid}/opponents/{team_id}/capture`, and `GET /t/{tid}/export/availability.csv` (UTC slot, player, status) in `services/csv_io.py` with its test.
 
 ### Phase 6 — MP lobby skimmer, MP score auto-fill, coverage tracker (`feat/skimmer`)
 1. `0006_lobbies.sql`; `services/mp_parse.py` (port `collect()`).

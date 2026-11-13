@@ -13,6 +13,7 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from fastapi import Depends, Request
 
 from app.clients.osu import OsuClient
@@ -45,6 +46,10 @@ def get_osu(request: Request) -> OsuClient:
 
 def get_wybin(request: Request) -> WybinClient:
     return request.app.state.wybin
+
+
+def get_http(request: Request) -> httpx.AsyncClient:
+    return request.app.state.http
 
 
 async def get_db(request: Request) -> AsyncIterator[sqlite3.Connection]:

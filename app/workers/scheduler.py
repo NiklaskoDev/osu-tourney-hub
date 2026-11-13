@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
+from app.clients.osu import OsuError
 from app.clients.wybin_models import WybinError
 from app.clock import Clock, to_utc_iso
 from app.db.connection import open_db
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Shown on the admin page. Never a request body, URL or exception text.
 WYBIN_ERROR_TEXT = "wybin could not be read. Nothing was changed for what failed."
+OSU_ERROR_TEXT = "osu! could not be reached. The work is picked up again on the next run."
 GENERIC_ERROR_TEXT = "The job failed. See the server log for details."
 
 Sleep = Callable[[float], Awaitable[None]]
@@ -76,6 +78,10 @@ class Scheduler:
         except WybinError as error:
             logger.warning("Job %s: wybin problem: %s", job.name, type(error).__name__)
             self._record_failure(job, WYBIN_ERROR_TEXT)
+            return False
+        except OsuError as error:
+            logger.warning("Job %s: osu! problem: %s", job.name, type(error).__name__)
+            self._record_failure(job, OSU_ERROR_TEXT)
             return False
         except Exception:
             logger.exception("Job %s failed", job.name)

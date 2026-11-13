@@ -43,6 +43,12 @@ def list_syncable(conn: sqlite3.Connection) -> list[Tournament]:
     return [_tournament(row) for row in rows]
 
 
+def list_active(conn: sqlite3.Connection) -> list[Tournament]:
+    """Every active tournament, wherever it came from."""
+    rows = conn.execute(_SELECT + "WHERE t.status = 'active' ORDER BY t.id").fetchall()
+    return [_tournament(row) for row in rows]
+
+
 def list_for_member(conn: sqlite3.Connection, osu_id: int) -> list[TournamentEntry]:
     """Tournaments the user belongs to, hidden ones left out. Archived ones come last."""
     rows = conn.execute(

@@ -60,7 +60,19 @@
 {{ empty_state("This stage has no maps yet. An administrator adds them on the admin page.") }}
 {% endif %}
 {% else %}
-<p class="muted">Scores count in {{ scoring_label }}, with accuracy beside each one. {{ old_scores_hint }}</p>
+<p class="muted">Scores count in {{ scoring_label }}, with accuracy beside each one. {{ old_scores_hint }} Scores from osu! are pulled automatically for ranked and loved maps.</p>
+
+<div class="row">
+  {% if can_refresh %}
+  <form method="post" action="/t/{{ tournament.id }}/capture/refresh">
+    {{ csrf_field(csrf_token) }}
+    <input type="hidden" name="stage" value="{{ stage.id }}">
+    {{ button("Refresh my scores", variant="secondary", icon_name="refresh-cw", type="submit", disabled=archived) }}
+  </form>
+  {% endif %}
+  {{ button("Export CSV", variant="secondary", icon_name="download", href="/t/" ~ tournament.id ~ "/export/pool.csv?stage=" ~ stage.id) }}
+  {% if can_manage and not archived %}{{ button("Import scores", variant="secondary", icon_name="upload", href="/t/" ~ tournament.id ~ "/import?stage=" ~ stage.id) }}{% endif %}
+</div>
 
 {% if not view.columns %}
 {{ empty_state("This tournament has no players on its roster yet. Add them on the Members page.") }}

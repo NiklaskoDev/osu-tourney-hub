@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
 
-from app.domain.models import Score
+from app.domain.models import ApiScore, Score
 
 _SELECT = (
     "SELECT id, beatmap_id, osu_id, gamemode, mods, score, scoring, accuracy, max_combo, misses, "
@@ -34,10 +34,46 @@ class NewScore:
 
 def insert_manual(conn: sqlite3.Connection, new: NewScore, created_at: str) -> int:
     """Store a hand-entered score. Every one gets its own reference, so none is a duplicate."""
+    return _insert_hand_entered(conn, new, created_at, "manual")
+
+
+def insert_imported(conn: sqlite3.Connection, new: NewScore, created_at: str) -> int:
+    """Store a score from a CSV import. Callers skip duplicates before they get here."""
+    return _insert_hand_entered(conn, new, created_at, "import")
+
+
+def insert_api(conn: sqlite3.Connection, score: ApiScore, gamemode: int, created_at: str) -> bool:
+    """Store a captured osu! score (always lazer standardised, D3). Returns False when this score
+    id was captured before for that player."""
+    cursor = conn.execute(
+        "INSERT OR IGNORE INTO scores (beatmap_id, osu_id, gamemode, mods, score, scoring, "
+        "accuracy, max_combo, misses, passed, achieved_at, source, source_ref, source_url, "
+        "created_at) VALUES (?, ?, ?, ?, ?, 'lazer', ?, ?, ?, 1, ?, 'api', ?, ?, ?)",
+        (
+            score.beatmap_id,
+            score.osu_id,
+            gamemode,
+            score.mods,
+            score.total_score,
+            score.accuracy,
+            score.max_combo,
+            score.misses,
+            score.achieved_at,
+            str(score.score_id),
+            f"https://osu.ppy.sh/scores/{score.score_id}",
+            created_at,
+        ),
+    )
+    return cursor.rowcount == 1
+
+
+def _insert_hand_entered(
+    conn: sqlite3.Connection, new: NewScore, created_at: str, source: str
+) -> int:
     cursor = conn.execute(
         "INSERT INTO scores (beatmap_id, osu_id, gamemode, mods, score, scoring, accuracy, "
         "max_combo, misses, passed, source, source_ref, source_url, entered_by, tournament_id, "
-        "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'manual', ?, ?, ?, ?, ?)",
+        "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)",
         (
             new.beatmap_id,
             new.osu_id,
@@ -48,6 +84,7 @@ def insert_manual(conn: sqlite3.Connection, new: NewScore, created_at: str) -> i
             new.accuracy,
             new.max_combo,
             new.misses,
+            source,
             str(uuid.uuid4()),
             new.source_url,
             new.entered_by,

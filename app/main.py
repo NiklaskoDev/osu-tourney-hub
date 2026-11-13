@@ -26,12 +26,14 @@ from app.web.routes import (
     admin,
     admin_setup,
     auth,
+    capture,
     dashboard,
     health,
     lineup,
     me,
     members,
     pool,
+    sheet_io,
     styleguide,
     tournament,
     tournament_settings,
@@ -49,6 +51,9 @@ from app.workers.scheduler import Scheduler
 logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 AUTH_WINDOW = timedelta(minutes=1)
+REFRESH_WINDOW = timedelta(minutes=10)  # "Refresh my scores": once per person
+OPPONENT_CAPTURE_WINDOW = timedelta(hours=1)  # once per team
+IMPORT_LIMIT_PER_HOUR = 10
 
 
 def create_app(
@@ -65,7 +70,10 @@ def create_app(
 
     http = make_http_client(http_transport)
     wybin = WybinClient(http, settings.wybin_min_interval_seconds)
-    scheduler = Scheduler(settings.db_path, clock, build_jobs(settings, clock, wybin))
+    osu = OsuClient(
+        settings, http, RateLimiter(settings.osu_api_rate_per_min), clock, transport=http_transport
+    )
+    scheduler = Scheduler(settings.db_path, clock, build_jobs(settings, clock, wybin, osu))
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -96,12 +104,16 @@ def create_app(
     )
     app.state.settings = settings
     app.state.clock = clock
-    app.state.osu = OsuClient(
-        settings, http, RateLimiter(settings.osu_api_rate_per_min), clock, transport=http_transport
-    )
+    app.state.http = http
+    app.state.osu = osu
     app.state.wybin = wybin
     app.state.scheduler = scheduler
     app.state.auth_limiter = SlidingWindowLimiter(AUTH_LIMIT_PER_MINUTE, AUTH_WINDOW, clock)
+    app.state.refresh_limiter = SlidingWindowLimiter(1, REFRESH_WINDOW, clock)
+    app.state.opponent_capture_limiter = SlidingWindowLimiter(1, OPPONENT_CAPTURE_WINDOW, clock)
+    app.state.import_limiter = SlidingWindowLimiter(
+        IMPORT_LIMIT_PER_HOUR, timedelta(hours=1), clock
+    )
     # Added last = outermost, so the security headers also cover session and error responses.
     app.add_middleware(
         SessionMiddleware,
@@ -124,6 +136,8 @@ def create_app(
         tournament.router,
         members.router,
         pool.router,
+        capture.router,
+        sheet_io.router,
         lineup.router,
         tournament_settings.router,
         admin.router,

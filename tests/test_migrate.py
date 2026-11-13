@@ -23,6 +23,8 @@ EXPECTED_TABLES = {
     "notes",
     "lineups",
     "lineup_entries",
+    "capture_queue",
+    "capture_log",
 }
 
 
@@ -405,3 +407,38 @@ def test_notes_are_limited_to_2000_characters_and_known_visibilities(migrated):
             migrated.execute(insert, (tournament_id, map_id, visibility, body))
     migrated.execute("DELETE FROM pool_maps WHERE id = ?", (map_id,))
     assert migrated.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == 0
+
+
+# --- 0004: score capture queue and log ---
+
+QUEUE_INSERT = (
+    "INSERT INTO capture_queue (osu_id, beatmap_id, gamemode, priority, requested_at) "
+    "VALUES (?, ?, ?, 1, '2026-01-01T00:00:00Z')"
+)
+LOG_INSERT = (
+    "INSERT INTO capture_log (osu_id, beatmap_id, gamemode, last_pulled_at) "
+    "VALUES (?, ?, ?, '2026-01-01T00:00:00Z')"
+)
+
+
+@pytest.mark.parametrize("insert", [QUEUE_INSERT, LOG_INSERT])
+def test_a_pull_is_one_row_per_player_beatmap_and_mode(migrated, insert):
+    migrated.execute(insert, (5, 1001, 0))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(insert, (5, 1001, 0))
+    migrated.execute(insert, (6, 1001, 0))  # another player
+    migrated.execute(insert, (5, 1002, 0))  # another map
+    migrated.execute(insert, (5, 1001, 1))  # another mode
+
+
+@pytest.mark.parametrize("insert", [QUEUE_INSERT, LOG_INSERT])
+def test_capture_rows_only_accept_real_game_modes(migrated, insert):
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(insert, (5, 1001, 4))
+
+
+def test_a_queued_pull_starts_with_no_attempts(migrated):
+    migrated.execute(QUEUE_INSERT, (5, 1001, 0))
+
+    assert migrated.execute("SELECT attempts FROM capture_queue").fetchone()[0] == 0

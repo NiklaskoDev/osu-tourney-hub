@@ -9,6 +9,8 @@ from collections.abc import Iterable
 
 STANDARD, TAIKO, CATCH, MANIA = 0, 1, 2, 3
 GAME_MODES = {STANDARD: "osu!", TAIKO: "osu!taiko", CATCH: "osu!catch", MANIA: "osu!mania"}
+# How the osu! API names the modes in its `mode` parameter.
+API_MODE_NAMES = {STANDARD: "osu", TAIKO: "taiko", CATCH: "fruits", MANIA: "mania"}
 
 # osu! stable bitmask values, the format wybin uses for a map's required mods.
 MOD_BITS = {
