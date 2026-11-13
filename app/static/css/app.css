@@ -1018,3 +1018,57 @@ fieldset.field {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Live page: the score line and a short highlight when new content arrives */
+.live__status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.live__score {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+}
+
+.live__team {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-strong);
+  overflow-wrap: anywhere;
+}
+
+.live__wins {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-strong);
+}
+
+.live__removed {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.live__next {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-md);
+}
+
+.live__next h2 {
+  margin: 0;
+}
+
+@keyframes live-update {
+  from {
+    background-color: var(--surface-2);
+  }
+}
+
+#live-state > .live {
+  animation: live-update var(--motion) ease-out;
+}

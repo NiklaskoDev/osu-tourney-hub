@@ -1,0 +1,95 @@
+{#- The part of the live page that changes: sent whole over the event stream and also rendered with the page. -#}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/table.html" import table %}
+{% set first_to = state.first_to %}
+<div class="live stack">
+  <p class="live__status">
+    <strong>{{ state.status_label }}</strong>
+    {% if state.best_of %}<span class="muted">Best of {{ state.best_of }}, first to {{ first_to }}</span>{% endif %}
+  </p>
+  {% if state.notice %}
+  {% call alert("warning", "Live updates") %}{{ state.notice }}{% endcall %}
+  {% endif %}
+
+  <p class="live__score">
+    <span class="live__team">{{ state.left_name }}</span>
+    <span class="live__wins num">{{ state.left_wins }}<span class="muted"> - </span>{{ state.right_wins }}</span>
+    <span class="live__team">{{ state.right_name }}</span>
+  </p>
+  {% if state.decided %}
+  <p><strong>{{ state.left_name if state.left_wins > state.right_wins else state.right_name }} won the series.</strong></p>
+  {% endif %}
+  {% if state.current %}
+  <p>Playing now: {{ badge(state.current.slot) }} <span class="map-name">{{ state.current.title }}</span></p>
+  {% endif %}
+
+  {% if state.next_pick %}
+  {% set pick = state.next_pick %}
+  <section class="live__next stack" aria-labelledby="next-heading">
+    <h2 id="next-heading">Next pick</h2>
+    <p>
+      {% if pick.decider %}The tiebreaker decides it:
+      {% elif pick.picker_known %}{{ pick.team }} picks next:
+      {% else %}Best pick for {{ pick.team }} if it picks next:{% endif %}
+      {{ badge(pick.map.slot) }} <span class="map-name">{{ pick.map.title }}</span>
+    </p>
+    <dl class="facts">
+      {% if pick.team_chance is not none %}
+      <div><dt>Chance to win the map</dt><dd><span class="num">{{ pick.team_chance|fmt_pct }}</span>{% if pick.team %} <span class="muted">for {{ pick.team }}</span>{% endif %}</dd></div>
+      {% endif %}
+      {% if state.left_win_prob is not none %}
+      <div><dt>Chance to win the series</dt><dd><span class="num">{{ state.left_win_prob|fmt_pct }}</span> <span class="muted">for {{ state.left_name }}</span></dd></div>
+      {% endif %}
+    </dl>
+  </section>
+  {% elif state.prediction_notice %}
+  <p class="muted">{{ state.prediction_notice }}</p>
+  {% endif %}
+
+  <section class="stack" aria-labelledby="played-heading">
+    <h2 id="played-heading">Maps played</h2>
+    {% if state.played %}
+    {% call table("Maps played in this match") %}
+    <thead>
+      <tr>
+        <th scope="col">Map</th>
+        <th scope="col">Winner</th>
+        <th scope="col" class="is-numeric">{{ state.left_name }}</th>
+        <th scope="col" class="is-numeric">{{ state.right_name }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for game in state.played %}
+      <tr>
+        <th scope="row">{{ badge(game.map.slot) }} <span class="map-name" title="{{ game.map.title }}">{{ game.map.title }}</span></th>
+        <td>{{ game.winner or "Not decided" }}</td>
+        <td class="is-numeric">{{ game.left_score|fmt_score }}</td>
+        <td class="is-numeric">{{ game.right_score|fmt_score }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    {% else %}
+    {{ empty_state("No map has been played yet. The first one appears here as soon as it ends.") }}
+    {% endif %}
+  </section>
+
+  {% if state.removed %}
+  <section class="stack" aria-labelledby="removed-heading">
+    <h2 id="removed-heading">Protected and banned</h2>
+    <ul class="live__removed">
+      {% for item in state.removed %}
+      <li>{{ item.kind|capitalize }}: {{ badge(item.map.slot) }} <span class="muted">{{ "by " ~ item.team if item.team else "team not known" }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if state.open_maps and not state.decided %}
+  <p class="muted">Still open:
+    {% for item in state.open_maps %}{{ badge(item.slot) }}{% if not loop.last %} {% endif %}{% endfor %}
+  </p>
+  {% endif %}
+</div>

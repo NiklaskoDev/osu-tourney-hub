@@ -66,6 +66,8 @@ only (`-p 127.0.0.1:8080:8080`).
 
 The reverse proxy must buffer request bodies (nginx does by default). The app refuses a form post that has no `Content-Length`, which is what a streamed (chunked) body looks like, with `411 Length Required`.
 
+The live match page keeps one server-sent event stream open per viewer (`/t/<id>/live/<match>/stream`). The app answers it with `X-Accel-Buffering: no` and a heartbeat every 15 seconds; a proxy that buffers responses or closes idle connections sooner than that delays or breaks the live updates.
+
 ### Backup and a single process
 
 All state lives in `/data` (`app.db`, plus `app.db-wal` and `app.db-shm` while running). Back up that
@@ -179,7 +181,7 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `SCANNER_MAX_BACKLOG` | 5000 | lobby ids the scanner may lag before it skips ahead |
 | `SCANNER_OPEN_MAX_HOURS` | 24 | open lobbies are finalised after this |
 | `CAPTURE_REFRESH_HOURS` | 24 | minimum hours before a player's map score is fetched again, at least 1 |
-| `LIVE_POLL_SECONDS` | 10 | live match mode polling, minimum 5 |
+| `LIVE_POLL_SECONDS` | 10 | seconds between two reads of a followed lobby in live match mode, minimum 5 |
 | `AI_PROVIDER` | empty (off) | optional AI predictions |
 | `AI_API_KEY` | empty, secret | not needed for a local endpoint |
 | `AI_MODEL` | empty | required when a provider is set |
@@ -188,10 +190,10 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `DATA_DIR` | `/data` | set by the image; change only outside Docker |
 
 Read by this version: the five required variables, `OSU_API_RATE_PER_MIN`, `WYBIN_POLL_MINUTES`,
-`WYBIN_MIN_INTERVAL_SECONDS`, the five `SCANNER_*` variables, `CAPTURE_REFRESH_HOURS`, `LOG_LEVEL`,
-`DATA_DIR` (and `PUID`/`PGID` by the container start-up script). `SCANNER_BUDGET_PER_MIN` must be lower
+`WYBIN_MIN_INTERVAL_SECONDS`, the five `SCANNER_*` variables, `CAPTURE_REFRESH_HOURS`,
+`LIVE_POLL_SECONDS`, `LOG_LEVEL`, `DATA_DIR` (and `PUID`/`PGID` by the container start-up script). `SCANNER_BUDGET_PER_MIN` must be lower
 than `OSU_API_RATE_PER_MIN` while the scanner is enabled, or the app does not start; when it is not set
-it is 30, or one less than `OSU_API_RATE_PER_MIN` if that is 30 or lower. `LIVE_POLL_SECONDS` and the
+it is 30, or one less than `OSU_API_RATE_PER_MIN` if that is 30 or lower. The
 `AI_*` variables are not read yet; they only take effect in the versions that add the matching feature,
 and setting them now changes nothing.
 

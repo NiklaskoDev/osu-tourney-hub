@@ -214,6 +214,37 @@ def test_a_pool_that_runs_out_of_picks_plays_the_rest_as_coin_flips():
     assert result.win_prob == pytest.approx(0.4 + 0.5 * 0.5)  # 2-0 0.4, then 1-1 0.5 -> 0.25
 
 
+def test_a_series_under_way_continues_from_its_score():
+    maps = [series_map(1, 0.3), series_map(2, 0.8), series_map(9, 0.5, "TB", tiebreaker=True)]
+
+    result = simulate_series(maps, best_of=3, bans=0, protects=0, first_pick=2, played=(1, 0))
+
+    # Side 2 picks the map side 1 is weakest on (map 1); side 1 needs that one or the tiebreaker.
+    assert result.orders[0].picks == [(2, 1)]
+    assert result.score_probs == {
+        (2, 0): pytest.approx(0.3),
+        (2, 1): pytest.approx(0.35),
+        (1, 2): pytest.approx(0.35),
+    }
+    assert result.win_prob == pytest.approx(0.65)
+
+
+def test_a_series_one_win_each_from_the_end_is_decided_by_the_tiebreaker_alone():
+    maps = [series_map(1, 0.1), series_map(9, 0.7, "TB", tiebreaker=True)]
+
+    result = simulate_series(maps, best_of=3, bans=0, protects=0, first_pick=1, played=(1, 1))
+
+    assert result.orders[0].picks == []
+    assert result.win_prob == pytest.approx(0.7)
+    assert set(result.score_probs) == {(2, 1), (1, 2)}
+
+
+def test_a_series_that_has_not_started_is_the_same_with_or_without_a_score():
+    maps = [series_map(1, 0.8), series_map(2, 0.6), series_map(9, 0.5, "TB", tiebreaker=True)]
+
+    assert simulate_series(maps, 3, 0, 0, played=(0, 0)) == simulate_series(maps, 3, 0, 0)
+
+
 def test_a_map_without_data_is_a_coin_flip():
     result = simulate_series([series_map(1, None), series_map(2, None)], 3, 0, 0)
 

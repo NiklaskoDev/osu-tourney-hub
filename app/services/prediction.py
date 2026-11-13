@@ -213,6 +213,7 @@ def simulate_series(
     protects: int,
     first_pick: int | None = None,
     habits: tuple[Habits | None, Habits | None] = (None, None),
+    played: FinalScore = (0, 0),
 ) -> SeriesResult:
     """Simulate protects, bans and picks, then play the series out exactly.
 
@@ -222,11 +223,15 @@ def simulate_series(
     Habits (side 1's, side 2's) bend these choices by `HABIT_WEIGHT`. The chance to win is the sum
     over all ways the series can go. With `first_pick` None both first-pick orders are simulated
     and averaged.
+
+    `played` is the score of a series already under way: `maps` are then the maps still open, the
+    picks start with `first_pick` and the chances are those of the rest of the series.
     """
     if best_of < 1 or best_of % 2 == 0:
         raise ValueError("best_of must be an odd number")
     orders = [
-        _simulate_order(maps, best_of, bans, protects, side, habits) for side in _firsts(first_pick)
+        _simulate_order(maps, best_of, bans, protects, side, habits, played)
+        for side in _firsts(first_pick)
     ]
     scores: dict[FinalScore, float] = defaultdict(float)
     for _, distribution in orders:
@@ -256,17 +261,18 @@ def _simulate_order(
     protects: int,
     first: int,
     habits: tuple[Habits | None, Habits | None],
+    played: FinalScore = (0, 0),
 ) -> tuple[OrderResult, dict[FinalScore, float]]:
     pool = [m for m in maps if not m.is_tiebreaker]
     tiebreaker = next((m for m in maps if m.is_tiebreaker), None)
     sides = (first, 3 - first)
     protected = _protect(pool, protects, sides)
     banned = _ban(pool, bans, sides, protected, habits)
-    picks = _pick(pool, best_of - 1, sides, banned, habits)
+    picks = _pick(pool, best_of - 1 - sum(played), sides, banned, habits)
     by_id = {m.pool_map_id: m for m in pool}
     sequence = [_advantage(1, by_id[map_id].prob) for _, map_id in picks]
     tiebreak = _advantage(1, tiebreaker.prob) if tiebreaker else 0.5
-    distribution = _play(sequence, tiebreak, best_of)
+    distribution = _play(sequence, tiebreak, best_of, played)
     wins = sum(p for (won, _), p in distribution.items() if won > best_of // 2)
     return (
         OrderResult(first, wins, protected.by_side, banned.by_side, picks),
@@ -346,14 +352,16 @@ def _rate(habits: Habits | None, which: str) -> Callable[[str], float]:
     return lambda bracket: table.get(bracket, 0.0)
 
 
-def _play(sequence: Sequence[float], tiebreak: float, best_of: int) -> dict[FinalScore, float]:
-    """The chance of every final score, walking the series game by game. `sequence[i]` is side
-    1's chance on the i-th game (a coin flip once the picks run out); the deciding game at one win
-    short of the finish uses `tiebreak`."""
+def _play(
+    sequence: Sequence[float], tiebreak: float, best_of: int, start: FinalScore = (0, 0)
+) -> dict[FinalScore, float]:
+    """The chance of every final score, walking the series game by game from the score `start`.
+    `sequence[i]` is side 1's chance on the i-th game still to play (a coin flip once the picks
+    run out); the deciding game at one win short of the finish uses `tiebreak`."""
     needed = best_of // 2 + 1
-    states: dict[FinalScore, float] = {(0, 0): 1.0}
+    states: dict[FinalScore, float] = {start: 1.0}
     final: dict[FinalScore, float] = defaultdict(float)
-    for game in range(best_of):
+    for game in range(best_of - sum(start)):
         following: dict[FinalScore, float] = defaultdict(float)
         for (one, two), chance in states.items():
             if one == two == needed - 1:

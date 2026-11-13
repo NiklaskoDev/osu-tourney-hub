@@ -21,6 +21,7 @@ from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db.connection import open_db
 from app.db.migrate import migrate
+from app.services.live import LiveFollower
 from app.services.skimmer import Skimmer
 from app.web.error_pages import install_error_handlers
 from app.web.routes import (
@@ -35,6 +36,7 @@ from app.web.routes import (
     health,
     history,
     lineup,
+    live,
     lobbies,
     matches,
     me,
@@ -96,7 +98,10 @@ def create_app(
         scan_limiter=RateLimiter(settings.scanner_budget_per_min, burst=1),
     )
     skimmer = Skimmer(settings, clock, osu)
-    scheduler = Scheduler(settings.db_path, clock, build_jobs(settings, clock, wybin, osu, skimmer))
+    live_follower = LiveFollower(settings, clock, osu)
+    scheduler = Scheduler(
+        settings.db_path, clock, build_jobs(settings, clock, wybin, osu, skimmer, live_follower)
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -113,6 +118,7 @@ def create_app(
             yield
         finally:
             await scheduler.stop()
+            await live_follower.stop_all()
             await http.aclose()
 
     # No interactive API docs: the app serves HTML pages, not a public API.
@@ -130,6 +136,7 @@ def create_app(
     app.state.http = http
     app.state.osu = osu
     app.state.skimmer = skimmer
+    app.state.live = live_follower
     app.state.wybin = wybin
     app.state.scheduler = scheduler
     app.state.auth_limiter = SlidingWindowLimiter(AUTH_LIMIT_PER_MINUTE, AUTH_WINDOW, clock)
@@ -173,6 +180,7 @@ def create_app(
         availability.router,
         schedule.router,
         matches.router,
+        live.router,
         history.router,
         pickems.router,
         feeds.router,

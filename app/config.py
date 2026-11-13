@@ -28,6 +28,8 @@ MIN_WYBIN_POLL_MINUTES = 10
 DEFAULT_WYBIN_MIN_INTERVAL_SECONDS = 2
 MAX_WYBIN_MIN_INTERVAL_SECONDS = 60
 DEFAULT_CAPTURE_REFRESH_HOURS = 24
+DEFAULT_LIVE_POLL_SECONDS = 10
+MIN_LIVE_POLL_SECONDS = 5
 DEFAULT_SCANNER_BUDGET_PER_MIN = 30
 MIN_SCANNER_WORKERS = 1
 MAX_SCANNER_WORKERS = 8
@@ -67,6 +69,7 @@ class Settings:
     wybin_poll_minutes: int = DEFAULT_WYBIN_POLL_MINUTES
     wybin_min_interval_seconds: int = DEFAULT_WYBIN_MIN_INTERVAL_SECONDS
     capture_refresh_hours: int = DEFAULT_CAPTURE_REFRESH_HOURS
+    live_poll_seconds: int = DEFAULT_LIVE_POLL_SECONDS
     scanner_enabled: bool = True
     scanner_budget_per_min: int = DEFAULT_SCANNER_BUDGET_PER_MIN
     scanner_workers: int = DEFAULT_SCANNER_WORKERS
@@ -139,6 +142,12 @@ class Settings:
         if capture_hours is None:
             invalid["CAPTURE_REFRESH_HOURS"] = "must be a number of at least 1"
 
+        live_poll = _parse_int(
+            environ.get("LIVE_POLL_SECONDS", ""), DEFAULT_LIVE_POLL_SECONDS, MIN_LIVE_POLL_SECONDS
+        )
+        if live_poll is None:
+            invalid["LIVE_POLL_SECONDS"] = f"must be a number of at least {MIN_LIVE_POLL_SECONDS}"
+
         scanner = _scanner_settings(environ, osu_api_rate, invalid)
 
         if missing or invalid:
@@ -156,6 +165,7 @@ class Settings:
             wybin_poll_minutes=wybin_poll,
             wybin_min_interval_seconds=wybin_interval,
             capture_refresh_hours=capture_hours,
+            live_poll_seconds=live_poll,
             **scanner,
         )
 

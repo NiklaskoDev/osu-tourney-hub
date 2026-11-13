@@ -1,0 +1,45 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/button.html" import button %}
+{% from "components/countdown.html" import countdown, local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% block title %}Live: {{ state.title }} - {{ tournament.name }} - {% endblock %}
+
+{% block tournament_content %}
+<div class="page__header">
+  <h1>{{ state.title }}</h1>
+  <p class="muted">
+    Live view
+    {%- if match.scheduled_at %}, {{ local_time(match.scheduled_at) }}{% if match.status != "done" %} (in {{ countdown(match.scheduled_at) }}){% endif %}{% endif %}
+  </p>
+</div>
+
+<div class="row">
+  {{ button("Match page", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ match.id) }}
+  {% if can_control %}
+  {% if following %}
+  <form method="post" action="/t/{{ tournament.id }}/live/{{ match.id }}/stop">
+    {{ csrf_field(csrf_token) }}
+    {{ button("Stop live updates", variant="secondary", type="submit") }}
+  </form>
+  {% else %}
+  <form method="post" action="/t/{{ tournament.id }}/live/{{ match.id }}/start">
+    {{ csrf_field(csrf_token) }}
+    {{ button("Start live updates", variant="primary", type="submit", disabled=not has_lobby) }}
+  </form>
+  {% endif %}
+  {% endif %}
+</div>
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}Live updates cannot be started or stopped. The last stored state is shown.{% endcall %}
+{% endif %}
+{% if not has_lobby %}
+{% call alert("info", "No multiplayer lobby yet") %}Live updates start once the lobby of this match is linked on wybin. Matches of our team start by themselves 30 minutes before the match.{% endcall %}
+{% endif %}
+
+<p class="muted live__connection" data-live-connection hidden role="status">Connection lost. Reconnecting.</p>
+<div id="live-state" aria-live="polite" hx-ext="sse" sse-connect="/t/{{ tournament.id }}/live/{{ match.id }}/stream" sse-swap="state" sse-close="end">
+  {% include "partials/live_state.html" %}
+</div>
+{% endblock %}

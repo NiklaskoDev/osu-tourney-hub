@@ -244,6 +244,26 @@ def test_capture_refresh_hours_below_one_or_not_a_number_is_rejected(valid_env, 
     assert list(caught.value.invalid) == ["CAPTURE_REFRESH_HOURS"]
 
 
+def test_live_poll_seconds_defaults_to_10_and_is_read_from_the_environment(valid_env):
+    assert Settings.from_env(valid_env).live_poll_seconds == 10
+
+    valid_env["LIVE_POLL_SECONDS"] = "5"
+    assert Settings.from_env(valid_env).live_poll_seconds == 5
+
+    valid_env["LIVE_POLL_SECONDS"] = "30"
+    assert Settings.from_env(valid_env).live_poll_seconds == 30
+
+
+@pytest.mark.parametrize("raw", ["4", "0", "-1", "x", "7.5"])
+def test_live_poll_seconds_below_five_or_not_a_number_is_rejected(valid_env, raw):
+    valid_env["LIVE_POLL_SECONDS"] = raw
+
+    with pytest.raises(ConfigError) as caught:
+        Settings.from_env(valid_env)
+
+    assert list(caught.value.invalid) == ["LIVE_POLL_SECONDS"]
+
+
 # --- the lobby scanner ---
 
 

@@ -60,6 +60,22 @@ def list_played_with_lobby(conn: sqlite3.Connection, limit: int, read_prefix: st
     return [Match(**row) for row in rows]
 
 
+def list_live_candidates(conn: sqlite3.Connection, earliest: str, latest: str) -> list[Match]:
+    """Unfinished matches of our team in active tournaments that name a lobby and are scheduled
+    from `earliest` to `latest` (UTC), the ones to follow live."""
+    rows = conn.execute(
+        "SELECT m.id, m.tournament_id, m.stage_id, m.wybin_match_id, m.label, m.team1_id, "
+        "m.team2_id, m.scheduled_at, m.score1, m.score2, m.mp_match_id, m.status, m.updated_at "
+        "FROM matches m JOIN tournaments t ON t.id = m.tournament_id "
+        "WHERE t.status = 'active' AND m.status != 'done' AND m.mp_match_id IS NOT NULL "
+        "AND t.our_team_id IN (m.team1_id, m.team2_id) "
+        "AND m.scheduled_at >= ? AND m.scheduled_at <= ? "
+        "ORDER BY m.scheduled_at, m.id",
+        (earliest, latest),
+    ).fetchall()
+    return [Match(**row) for row in rows]
+
+
 def list_for_tournament(conn: sqlite3.Connection, tournament_id: int) -> list[Match]:
     """Matches in time order; the ones without a time come last."""
     rows = conn.execute(

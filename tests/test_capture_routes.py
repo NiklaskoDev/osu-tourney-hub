@@ -249,7 +249,9 @@ def run(coroutine):
 def jobs_by_name(app, settings, clock):
     return {
         j.name: j
-        for j in build_jobs(settings, clock, app.state.wybin, app.state.osu, app.state.skimmer)
+        for j in build_jobs(
+            settings, clock, app.state.wybin, app.state.osu, app.state.skimmer, app.state.live
+        )
     }
 
 

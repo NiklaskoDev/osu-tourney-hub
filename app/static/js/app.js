@@ -114,6 +114,21 @@
     openMarkedDialogs(document);
     window.setInterval(tickCountdowns, 1000);
   });
+  // The live page shows a note while its event stream is down; the browser reconnects by itself.
+  function showLiveConnection(visible) {
+    var note = document.querySelector("[data-live-connection]");
+    if (note) note.hidden = !visible;
+  }
+  document.addEventListener("htmx:sseError", function () {
+    showLiveConnection(true);
+  });
+  document.addEventListener("htmx:sseOpen", function () {
+    showLiveConnection(false);
+  });
+  document.addEventListener("htmx:sseClose", function () {
+    showLiveConnection(false);
+  });
+
   document.addEventListener("htmx:afterSwap", function (event) {
     renderAll(event.target);
   });

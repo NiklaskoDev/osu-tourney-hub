@@ -16,6 +16,7 @@ from app.services.wybin_sync import import_tournament
 from app.workers.jobs import (
     CAPTURE_DRAIN,
     CAPTURE_ENQUEUE,
+    LIVE_FOLLOW,
     LOBBY_LINKS,
     MATCH_HISTORY,
     SKIMMER_HEAD,
@@ -54,7 +55,9 @@ def run(coroutine):
 
 
 def app_jobs(app, settings, clock) -> list[Job]:
-    return build_jobs(settings, clock, app.state.wybin, app.state.osu, app.state.skimmer)
+    return build_jobs(
+        settings, clock, app.state.wybin, app.state.osu, app.state.skimmer, app.state.live
+    )
 
 
 def job(name, action, hours=1) -> Job:
@@ -228,6 +231,7 @@ def test_the_app_registers_its_jobs_with_the_configured_interval(app, settings, 
         CAPTURE_DRAIN,
         LOBBY_LINKS,
         MATCH_HISTORY,
+        LIVE_FOLLOW,
         SKIMMER_HEAD,
         SKIMMER_WORKERS,
         SKIMMER_OPEN_CHECK,
@@ -239,6 +243,7 @@ def test_the_app_registers_its_jobs_with_the_configured_interval(app, settings, 
     assert jobs[CAPTURE_DRAIN].interval == timedelta(minutes=1)
     assert jobs[LOBBY_LINKS].interval == timedelta(minutes=30)
     assert jobs[MATCH_HISTORY].interval == timedelta(minutes=30)
+    assert jobs[LIVE_FOLLOW].interval == timedelta(seconds=60)
     assert jobs[SKIMMER_HEAD].interval == timedelta(seconds=60)
     assert jobs[SKIMMER_OPEN_CHECK].interval == timedelta(minutes=5)
     assert jobs[SKIMMER_STATS_PRUNE].interval == timedelta(hours=1)
@@ -249,7 +254,9 @@ def test_a_switched_off_scanner_registers_none_of_its_jobs(app, settings, clock)
 
     names = {
         item.name
-        for item in build_jobs(off, clock, app.state.wybin, app.state.osu, app.state.skimmer)
+        for item in build_jobs(
+            off, clock, app.state.wybin, app.state.osu, app.state.skimmer, app.state.live
+        )
     }
 
     assert names == {
@@ -259,6 +266,7 @@ def test_a_switched_off_scanner_registers_none_of_its_jobs(app, settings, clock)
         CAPTURE_DRAIN,
         LOBBY_LINKS,
         MATCH_HISTORY,
+        LIVE_FOLLOW,
     }
 
 
@@ -267,7 +275,9 @@ def test_the_lobby_link_job_follows_the_wybin_poll_interval(app, settings, clock
 
     jobs = {
         item.name: item
-        for item in build_jobs(slow, clock, app.state.wybin, app.state.osu, app.state.skimmer)
+        for item in build_jobs(
+            slow, clock, app.state.wybin, app.state.osu, app.state.skimmer, app.state.live
+        )
     }
 
     assert jobs[LOBBY_LINKS].interval == timedelta(minutes=45)

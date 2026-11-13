@@ -240,10 +240,16 @@ async def refresh_from_lobby(
     if match.mp_match_id is None:
         raise LookupError("match has no lobby")
     fetched = await osu.fetch_match(match.mp_match_id, priority=priority)
-    pool = stages_repo.list_maps(conn, match.stage_id) if match.stage_id is not None else []
-    events = derive_mp_events(mp_parse.parse_games(fetched.events), pool, _membership(conn, match))
     if fetched.truncated:
         logger.warning("Lobby %s has more events than were read", match.mp_match_id)
+    return store_lobby_events(conn, match, fetched.events)
+
+
+def store_lobby_events(conn: sqlite3.Connection, match: Match, lobby_events: list[dict]) -> int:
+    """Make the match's lobby events what the raw osu! events of its lobby show. Returns how many
+    events that gave."""
+    pool = stages_repo.list_maps(conn, match.stage_id) if match.stage_id is not None else []
+    events = derive_mp_events(mp_parse.parse_games(lobby_events), pool, _membership(conn, match))
     with transaction(conn):
         events_repo.replace_source(conn, match.id, "mp", events)
         _realign(conn, match.id)
