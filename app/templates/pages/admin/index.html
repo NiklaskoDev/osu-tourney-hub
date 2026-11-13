@@ -134,6 +134,12 @@
     </form>
   </section>
 
+  <section class="stack" aria-labelledby="scanner-heading">
+    <h2 id="scanner-heading">Lobby scanner</h2>
+    <p class="muted">Scans every new multiplayer lobby for maps of the current pools.</p>
+    <div>{{ button("Scanner status", variant="secondary", href="/admin/scanner") }}</div>
+  </section>
+
   <section class="stack" aria-labelledby="jobs-heading">
     <h2 id="jobs-heading">Background jobs</h2>
     {% call table("Background jobs") %}
@@ -151,7 +157,7 @@
         <th scope="row">{{ job.label }}</th>
         <td>{% if job.last_run_at %}{{ local_time(job.last_run_at) }}{% else %}<span class="muted">Not yet</span>{% endif %}</td>
         <td>{% if job.last_ok_at %}{{ local_time(job.last_ok_at) }}{% else %}<span class="muted">Not yet</span>{% endif %}</td>
-        <td>{% if job.error %}<strong class="result--loss">Failed.</strong> {{ job.error }}{% elif job.last_ok_at %}<strong class="result--win">OK</strong>{% else %}<span class="muted">Waiting for the first run</span>{% endif %}</td>
+        <td>{% if job.error %}<strong class="result--loss">Failed.</strong> {{ job.error }}{% elif job.continuous and job.last_run_at %}<strong class="result--win">Running</strong>{% elif job.last_ok_at %}<strong class="result--win">OK</strong>{% else %}<span class="muted">Waiting for the first run</span>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

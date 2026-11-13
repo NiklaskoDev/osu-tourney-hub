@@ -5,7 +5,7 @@ import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
 
-from app.domain.models import ApiScore, Score
+from app.domain.models import ApiScore, MpScore, Score
 
 _SELECT = (
     "SELECT id, beatmap_id, osu_id, gamemode, mods, score, scoring, accuracy, max_combo, misses, "
@@ -61,6 +61,43 @@ def insert_api(conn: sqlite3.Connection, score: ApiScore, gamemode: int, created
             score.achieved_at,
             str(score.score_id),
             f"https://osu.ppy.sh/scores/{score.score_id}",
+            created_at,
+        ),
+    )
+    return cursor.rowcount == 1
+
+
+def insert_mp(
+    conn: sqlite3.Connection,
+    mp_match_id: int,
+    game_id: int,
+    beatmap_id: int,
+    gamemode: int,
+    scoring: str,
+    achieved_at: str | None,
+    score: MpScore,
+    created_at: str,
+) -> bool:
+    """Store a score read from a multiplayer game, once per game and player. Returns False when
+    it was stored before (a lobby read twice)."""
+    cursor = conn.execute(
+        "INSERT OR IGNORE INTO scores (beatmap_id, osu_id, gamemode, mods, score, scoring, "
+        "accuracy, max_combo, misses, passed, achieved_at, source, source_ref, source_url, "
+        "created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'mp', ?, ?, ?)",
+        (
+            beatmap_id,
+            score.osu_id,
+            gamemode,
+            score.mods,
+            score.score,
+            scoring,
+            score.accuracy,
+            score.max_combo,
+            score.misses,
+            int(score.passed),
+            achieved_at,
+            f"{mp_match_id}:{game_id}",
+            f"https://osu.ppy.sh/community/matches/{mp_match_id}",
             created_at,
         ),
     )

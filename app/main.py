@@ -21,6 +21,7 @@ from app.clock import Clock, SystemClock
 from app.config import Settings
 from app.db.connection import open_db
 from app.db.migrate import migrate
+from app.services.skimmer import Skimmer
 from app.web.error_pages import install_error_handlers
 from app.web.routes import (
     admin,
@@ -28,13 +29,16 @@ from app.web.routes import (
     auth,
     availability,
     capture,
+    coverage,
     dashboard,
     feeds,
     health,
     lineup,
+    lobbies,
     me,
     members,
     pool,
+    scanner,
     schedule,
     sheet_io,
     styleguide,
@@ -59,6 +63,7 @@ AUTH_WINDOW = timedelta(minutes=1)
 REFRESH_WINDOW = timedelta(minutes=10)  # "Refresh my scores": once per person
 OPPONENT_CAPTURE_WINDOW = timedelta(hours=1)  # once per team
 IMPORT_LIMIT_PER_HOUR = 10
+LOBBY_LINK_LIMIT_PER_HOUR = 20  # lobby links a person may add; each one costs an osu! request
 
 
 def create_app(
@@ -79,9 +84,16 @@ def create_app(
     http = make_http_client(http_transport)
     wybin = WybinClient(http, settings.wybin_min_interval_seconds)
     osu = OsuClient(
-        settings, http, RateLimiter(settings.osu_api_rate_per_min), clock, transport=http_transport
+        settings,
+        http,
+        RateLimiter(settings.osu_api_rate_per_min),
+        clock,
+        transport=http_transport,
+        # One request at a time at the scanner's pace: it never bursts past its share.
+        scan_limiter=RateLimiter(settings.scanner_budget_per_min, burst=1),
     )
-    scheduler = Scheduler(settings.db_path, clock, build_jobs(settings, clock, wybin, osu))
+    skimmer = Skimmer(settings, clock, osu)
+    scheduler = Scheduler(settings.db_path, clock, build_jobs(settings, clock, wybin, osu, skimmer))
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -114,11 +126,15 @@ def create_app(
     app.state.clock = clock
     app.state.http = http
     app.state.osu = osu
+    app.state.skimmer = skimmer
     app.state.wybin = wybin
     app.state.scheduler = scheduler
     app.state.auth_limiter = SlidingWindowLimiter(AUTH_LIMIT_PER_MINUTE, AUTH_WINDOW, clock)
     app.state.refresh_limiter = SlidingWindowLimiter(1, REFRESH_WINDOW, clock)
     app.state.opponent_capture_limiter = SlidingWindowLimiter(1, OPPONENT_CAPTURE_WINDOW, clock)
+    app.state.lobby_link_limiter = SlidingWindowLimiter(
+        LOBBY_LINK_LIMIT_PER_HOUR, timedelta(hours=1), clock
+    )
     app.state.import_limiter = SlidingWindowLimiter(
         IMPORT_LIMIT_PER_HOUR, timedelta(hours=1), clock
     )
@@ -149,11 +165,14 @@ def create_app(
         capture.router,
         sheet_io.router,
         lineup.router,
+        lobbies.router,
+        coverage.router,
         availability.router,
         schedule.router,
         feeds.router,
         tournament_settings.router,
         admin.router,
+        scanner.router,
         admin_setup.router,
         styleguide.router,
     ):

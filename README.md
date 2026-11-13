@@ -134,6 +134,30 @@ docs.google.com is contacted. The import shows a preview with the detected colum
 row before anything is stored; scores already on the sheet are skipped. The Lineup page exports the
 saved lineup.
 
+## Lobby scanner, lobbies and coverage
+
+The scanner reads every new osu! multiplayer lobby id, whatever the lobby is called, and keeps the
+lobbies in which a map of a current pool was played: the released stages of active tournaments whose
+end date has not passed. On its first run it starts at the newest lobby and never reads history.
+Each stored lobby lists the pool maps played and the players found; only players registered in the
+tournament (on a team or the roster, opponents included) are noted, and their scores are added to the
+pool sheet as multiplayer scores. A lobby that is still open is read once after it closes (long ones
+in steps), deleted or private lobbies are skipped and counted, and a lobby is stored once however it
+was found. Lobby links on wybin and links a player pastes on the Lobbies page are read too, and
+stored even when no pool map was played in them.
+
+The scanner uses at most `SCANNER_BUDGET_PER_MIN` osu! requests a minute, inside `OSU_API_RATE_PER_MIN`
+and at a lower priority than anything a person waits for. The estimate is about 3 to 5 new lobbies a
+minute, so the default 30 leaves room to spare. The admin page "Scanner status" shows the real
+figures, refreshed every 15 seconds, warns when the scanner falls behind, and lists ranges it skipped
+(after `SCANNER_MAX_BACKLOG` lobbies behind it jumps ahead) with a "Backfill" button; a backfill only
+runs while the scanner is nearly caught up. "Pause scanner" stops it until resumed.
+
+The Coverage page shows for each map of a stage who has a score (from any source), marks the players
+of the likely lineup (the current suggestion), flags maps where nobody in it, or fewer than the lineup
+size, has a score, and shows captains' practice targets (a score and/or accuracy for the team or one
+player) as met or missed.
+
 ## Configuration
 
 All settings are environment variables. `.env.example` lists them with comments.
@@ -164,9 +188,12 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `DATA_DIR` | `/data` | set by the image; change only outside Docker |
 
 Read by this version: the five required variables, `OSU_API_RATE_PER_MIN`, `WYBIN_POLL_MINUTES`,
-`WYBIN_MIN_INTERVAL_SECONDS`, `CAPTURE_REFRESH_HOURS`, `LOG_LEVEL`, `DATA_DIR` (and `PUID`/`PGID` by
-the container start-up script). The other variables from `SCANNER_ENABLED` down to `AI_BASE_URL` are not read yet; they only take
-effect in the versions that add the matching feature, and setting them now changes nothing.
+`WYBIN_MIN_INTERVAL_SECONDS`, the five `SCANNER_*` variables, `CAPTURE_REFRESH_HOURS`, `LOG_LEVEL`,
+`DATA_DIR` (and `PUID`/`PGID` by the container start-up script). `SCANNER_BUDGET_PER_MIN` must be lower
+than `OSU_API_RATE_PER_MIN` while the scanner is enabled, or the app does not start; when it is not set
+it is 30, or one less than `OSU_API_RATE_PER_MIN` if that is 30 or lower. `LIVE_POLL_SECONDS` and the
+`AI_*` variables are not read yet; they only take effect in the versions that add the matching feature,
+and setting them now changes nothing.
 
 ## Local development
 

@@ -6,7 +6,13 @@ import pytest
 from app.repos import deleted_tournaments as deleted_repo
 from app.repos import jobs as jobs_repo
 from app.repos import wybin_links as links_repo
-from app.workers.jobs import JOB_LABELS, SYNC_ACTIVE, TRACK_SIGNUPS
+from app.workers.jobs import (
+    JOB_LABELS,
+    SKIMMER_JOBS,
+    SKIMMER_WORKERS,
+    SYNC_ACTIVE,
+    TRACK_SIGNUPS,
+)
 from app.workers.scheduler import GENERIC_ERROR_TEXT
 from tests.support import ADMIN_ID, add_member, add_tournament
 
@@ -112,6 +118,8 @@ def test_the_console_shows_job_state_with_generic_errors(client, as_admin, db):
     page = client.get("/admin").text
     assert page.count("Waiting for the first run") == len(JOB_LABELS)
     assert "Pull queued scores from osu!" in page
+    assert "Read multiplayer lobbies linked on wybin" in page
+    assert "Scanner: read new multiplayer lobbies" in page
 
     jobs_repo.record_start(db, SYNC_ACTIVE, "2026-11-12T12:00:00Z")
     jobs_repo.record_failure(db, SYNC_ACTIVE, GENERIC_ERROR_TEXT)
@@ -746,3 +754,23 @@ def test_a_digit_string_in_a_lineup_field_name_is_ignored(client, as_admin, db, 
     )
 
     assert response.status_code == 303
+
+
+def test_a_switched_off_scanner_has_no_scanner_jobs_in_the_job_table(client, app, as_admin):
+    import dataclasses
+
+    app.state.settings = dataclasses.replace(app.state.settings, scanner_enabled=False)
+
+    page = client.get("/admin").text
+
+    assert "Scanner: " not in page
+    assert page.count("Waiting for the first run") == len(JOB_LABELS) - len(SKIMMER_JOBS)
+
+
+def test_the_continuous_scanner_job_shows_as_running_not_as_waiting(client, as_admin, db):
+    jobs_repo.record_start(db, SKIMMER_WORKERS, "2026-11-12T12:00:00Z")
+
+    page = client.get("/admin").text
+
+    assert re.search(r"result--win\">Running<", page)
+    assert page.count("Waiting for the first run") == len(JOB_LABELS) - 1

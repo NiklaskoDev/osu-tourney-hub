@@ -1,6 +1,7 @@
 """SQL for stages and their pool maps."""
 
 import sqlite3
+from dataclasses import dataclass
 from typing import Any
 
 from app.domain.models import PoolMap, Stage
@@ -100,6 +101,45 @@ def list_maps(conn: sqlite3.Connection, stage_id: int) -> list[PoolMap]:
         (stage_id,),
     ).fetchall()
     return [_pool_map(row) for row in rows]
+
+
+@dataclass(frozen=True)
+class ScanMap:
+    """A pool map the scanner looks for: which tournament it belongs to and in which mode."""
+
+    beatmap_id: int
+    pool_map_id: int
+    tournament_id: int
+    gamemode: int
+
+
+def list_scan_maps(
+    conn: sqlite3.Connection,
+    now: str,
+    tournament_id: int | None = None,
+    include_ended: bool = False,
+) -> list[ScanMap]:
+    """Maps with a beatmap in the released stages of active tournaments. Unless `include_ended`,
+    stages whose end date has passed are left out; `tournament_id` narrows it to one tournament
+    (of any status)."""
+    conditions = ["p.beatmap_id IS NOT NULL", "s.pool_released = 1"]
+    params: list[Any] = []
+    if tournament_id is None:
+        conditions.append("t.status = 'active'")
+    else:
+        conditions.append("t.id = ?")
+        params.append(tournament_id)
+    if not include_ended:
+        conditions.append("(s.end_at IS NULL OR s.end_at > ?)")
+        params.append(now)
+    rows = conn.execute(
+        "SELECT p.beatmap_id, p.id AS pool_map_id, t.id AS tournament_id, t.gamemode "  # noqa: S608
+        "FROM pool_maps p JOIN stages s ON s.id = p.stage_id "
+        "JOIN tournaments t ON t.id = s.tournament_id "
+        f"WHERE {' AND '.join(conditions)} ORDER BY p.id",
+        params,
+    ).fetchall()
+    return [ScanMap(**row) for row in rows]
 
 
 def get_map(conn: sqlite3.Connection, map_id: int) -> PoolMap | None:

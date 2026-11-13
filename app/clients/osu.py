@@ -7,8 +7,10 @@ shared rate limiter first. User tokens are used once to read `/me` and are never
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime, timedelta
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -20,9 +22,9 @@ from fastapi.responses import RedirectResponse
 
 from app.clients.http import REQUEST_TIMEOUT
 from app.clients.ratelimit import Priority, RateLimiter
-from app.clock import Clock, to_utc_iso
+from app.clock import Clock, utc_iso_or_none
 from app.config import Settings
-from app.domain.models import ApiScore, BeatmapMeta, OsuProfile
+from app.domain.models import ApiScore, BeatmapMeta, FetchedMatch, MatchSummary, OsuProfile
 from app.domain.modes import API_MODE_NAMES, canonical_mods
 
 logger = logging.getLogger(__name__)
@@ -44,7 +46,27 @@ MAX_API_SCORE = 2_000_000_000  # what the scores table accepts
 # osu!lazer's Classic mod only changes how the score is displayed; tournaments ignore it like NF.
 IGNORED_LAZER_MODS = frozenset({"CL"})
 
+MATCH_LIST_LIMIT = 50  # the most /matches returns per page
+MATCH_EVENTS_LIMIT = 100  # events per page of /matches/{id} (the API allows 101)
+MATCH_MAX_PAGES = 10
+
+# Lets a caller count the scan requests made inside its own task (a backfill, say) apart from the
+# rest of the scanner's.
+_scan_tally: ContextVar[list[int] | None] = ContextVar("scan_tally", default=None)
+
 Sleep = Callable[[float], Awaitable[None]]
+
+
+@contextmanager
+def tally_scan_requests() -> Iterator[list[int]]:
+    """Count the scan-priority requests the current task sends inside the block (retries
+    included): `tally[0]` holds the number."""
+    tally = [0]
+    token = _scan_tally.set(tally)
+    try:
+        yield tally
+    finally:
+        _scan_tally.reset(token)
 
 
 class OsuError(Exception):
@@ -72,10 +94,15 @@ class OsuClient:
         clock: Clock,
         transport: httpx.AsyncBaseTransport | None = None,
         sleep: Sleep = asyncio.sleep,
+        scan_limiter: RateLimiter | None = None,
     ) -> None:
         self._settings = settings
         self._http = http
         self._limiter = limiter
+        # The scanner's own budget: requests at SCAN priority wait for it first, then for the
+        # shared limiter, so the scanner can never take more than its share.
+        self._scan_limiter = scan_limiter
+        self.scan_requests = 0  # every request sent at SCAN priority, retries included
         self._clock = clock
         self._sleep = sleep
         self._token: str | None = None
@@ -172,6 +199,85 @@ class OsuClient:
             return []
         return _parse_api_scores(data, beatmap_id, osu_id, gamemode)
 
+    # --- multiplayer lobbies --------------------------------------------------------------------
+
+    async def list_matches(
+        self,
+        cursor_string: str | None = None,
+        active: bool | None = None,
+        priority: Priority = Priority.SCAN,
+    ) -> tuple[list[MatchSummary], str | None]:
+        """One page (newest first) of `GET /matches`: id, name and start/end time of each lobby.
+        `active=True` lists only open lobbies. The second value continues the listing, or is None
+        on the last page."""
+        params = {"limit": str(MATCH_LIST_LIMIT), "sort": "id_desc"}
+        if active:
+            params["active"] = "true"
+        if cursor_string:
+            params["cursor_string"] = cursor_string
+        data = await self._app_get(f"{API_BASE}/matches", priority, params)
+        raw = data.get("matches")
+        if not isinstance(raw, list):
+            raise OsuUnavailable("osu! sent a match list in an unexpected shape")
+        matches = [_parse_match_summary(item) for item in raw]
+        next_cursor = data.get("cursor_string")
+        return matches, next_cursor if isinstance(next_cursor, str) and next_cursor else None
+
+    async def fetch_match(
+        self,
+        match_id: int,
+        max_pages: int = MATCH_MAX_PAGES,
+        priority: Priority = Priority.SCAN,
+    ) -> FetchedMatch:
+        """A lobby with its events, read backwards page by page (`before`) until the first event
+        is reached or `max_pages` pages were read (then `truncated` is set and the oldest events
+        are missing). Raises `OsuNotFound` for a deleted or private lobby."""
+        url = f"{API_BASE}/matches/{match_id}"
+        events: dict[int, dict[str, Any]] = {}
+        match: MatchSummary | None = None
+        before: int | None = None
+        for _ in range(max_pages):
+            params = {"limit": str(MATCH_EVENTS_LIMIT)}
+            if before is not None:
+                params["before"] = str(before)
+            data = await self._app_get(url, priority, params)
+            match = _parse_match_summary(data.get("match"))
+            new = _new_events(data, events)
+            first = data.get("first_event_id")
+            if not new or (isinstance(first, int) and first in events):
+                return FetchedMatch(match, _sorted(events), False)
+            before = min(event["id"] for event in new)
+        if match is None:
+            raise OsuUnavailable("osu! was not asked for any match page")
+        return FetchedMatch(match, _sorted(events), True)
+
+    async def fetch_match_after(
+        self,
+        match_id: int,
+        after_event_id: int,
+        max_pages: int = MATCH_MAX_PAGES,
+        priority: Priority = Priority.SCAN,
+    ) -> FetchedMatch:
+        """The events of a lobby newer than `after_event_id`, read forwards (`after`) until the
+        latest event is reached. `truncated` means more are waiting than `max_pages` pages hold."""
+        url = f"{API_BASE}/matches/{match_id}"
+        events: dict[int, dict[str, Any]] = {}
+        match: MatchSummary | None = None
+        after = after_event_id
+        for _ in range(max_pages):
+            data = await self._app_get(
+                url, priority, {"limit": str(MATCH_EVENTS_LIMIT), "after": str(after)}
+            )
+            match = _parse_match_summary(data.get("match"))
+            new = _new_events(data, events)
+            latest = data.get("latest_event_id")
+            after = max([after, *(event["id"] for event in new)])
+            if not new or (isinstance(latest, int) and after >= latest):
+                return FetchedMatch(match, _sorted(events), False)
+        if match is None:
+            raise OsuUnavailable("osu! was not asked for any match page")
+        return FetchedMatch(match, _sorted(events), True)
+
     async def _app_get(
         self,
         url: str,
@@ -227,6 +333,12 @@ class OsuClient:
 
     # --- transport -----------------------------------------------------------------------------
 
+    def _count_scan_request(self) -> None:
+        self.scan_requests += 1
+        tally = _scan_tally.get()
+        if tally is not None:
+            tally[0] += 1
+
     async def _request(
         self,
         method: str,
@@ -243,7 +355,11 @@ class OsuClient:
             headers["Authorization"] = f"Bearer {bearer}"  # always wins over a caller's header
         path = urlsplit(url).path
         for attempt in range(MAX_ATTEMPTS):
+            if priority == Priority.SCAN and self._scan_limiter is not None:
+                await self._scan_limiter.acquire(priority)
             await self._limiter.acquire(priority)
+            if priority == Priority.SCAN:
+                self._count_scan_request()
             try:
                 response = await self._http.request(
                     method, url, headers=headers, params=params, data=form
@@ -278,6 +394,41 @@ def _classify(response: httpx.Response, path: str) -> dict[str, Any] | None:
     if not isinstance(data, dict):
         raise OsuUnavailable(f"osu! sent an unexpected response for {path}")
     return data
+
+
+def _parse_match_summary(item: object) -> MatchSummary:
+    if not isinstance(item, dict):
+        raise OsuUnavailable("osu! sent a match in an unexpected shape")
+    match_id = _int_or_none(item.get("id"))
+    if match_id is None or match_id <= 0:
+        raise OsuUnavailable("osu! sent a match in an unexpected shape")
+    name = item.get("name")
+    return MatchSummary(
+        id=match_id,
+        name=name[:MAX_METADATA_LENGTH] if isinstance(name, str) else "",
+        start_time=utc_iso_or_none(item.get("start_time")),
+        end_time=utc_iso_or_none(item.get("end_time")),
+    )
+
+
+def _new_events(data: dict[str, Any], seen: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
+    """Add the page's events that are not in `seen` yet and return them."""
+    raw = data.get("events")
+    if not isinstance(raw, list):
+        raise OsuUnavailable("osu! sent match events in an unexpected shape")
+    new = []
+    for event in raw:
+        event_id = event.get("id") if isinstance(event, dict) else None
+        if not isinstance(event_id, int) or isinstance(event_id, bool):
+            raise OsuUnavailable("osu! sent a match event in an unexpected shape")
+        if event_id not in seen:
+            seen[event_id] = event
+            new.append(event)
+    return new
+
+
+def _sorted(events: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
+    return [events[event_id] for event_id in sorted(events)]
 
 
 def _parse_profile(data: dict[str, Any]) -> OsuProfile:
@@ -370,7 +521,7 @@ def _parse_api_score(item: object, beatmap_id: int, osu_id: int, gamemode: int) 
     score_id = _int_or_none(item.get("id"))
     total = _int_or_none(item.get("total_score"))
     accuracy = _number_or_none(item.get("accuracy"))
-    mods = _api_mods(item.get("mods"), gamemode)
+    mods = api_mods(item.get("mods"), gamemode)
     if (
         score_id is None
         or score_id <= 0
@@ -392,11 +543,11 @@ def _parse_api_score(item: object, beatmap_id: int, osu_id: int, gamemode: int) 
         accuracy=round(accuracy * 100, 4),
         max_combo=_count_or_none(item.get("max_combo")),
         misses=_misses(statistics if isinstance(statistics, dict) else {}),
-        achieved_at=_utc_iso_or_none(item.get("ended_at")),
+        achieved_at=utc_iso_or_none(item.get("ended_at")),
     )
 
 
-def _api_mods(raw: object, gamemode: int) -> str | None:
+def api_mods(raw: object, gamemode: int) -> str | None:
     """Canonical mods from a list of acronyms or `{"acronym": ...}` objects; None when the mode
     does not have one of them."""
     if not isinstance(raw, list):
@@ -426,13 +577,3 @@ def _misses(statistics: dict[str, Any]) -> int | None:
 def _count_or_none(value: object) -> int | None:
     number = _int_or_none(value)
     return number if number is not None and number >= 0 else None
-
-
-def _utc_iso_or_none(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(value)
-    except ValueError:
-        return None
-    return to_utc_iso(moment if moment.tzinfo else moment.replace(tzinfo=UTC))

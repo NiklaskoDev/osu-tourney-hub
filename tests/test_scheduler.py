@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import time
 from contextlib import closing
 from datetime import timedelta
@@ -11,9 +12,15 @@ from app.clients.wybin_models import WybinUnavailable
 from app.db.connection import open_db
 from app.main import create_app
 from app.repos import jobs as jobs_repo
+from app.services.wybin_sync import import_tournament
 from app.workers.jobs import (
     CAPTURE_DRAIN,
     CAPTURE_ENQUEUE,
+    LOBBY_LINKS,
+    SKIMMER_HEAD,
+    SKIMMER_OPEN_CHECK,
+    SKIMMER_STATS_PRUNE,
+    SKIMMER_WORKERS,
     SYNC_ACTIVE,
     TRACK_SIGNUPS,
     build_jobs,
@@ -46,7 +53,7 @@ def run(coroutine):
 
 
 def app_jobs(app, settings, clock) -> list[Job]:
-    return build_jobs(settings, clock, app.state.wybin, app.state.osu)
+    return build_jobs(settings, clock, app.state.wybin, app.state.osu, app.state.skimmer)
 
 
 def job(name, action, hours=1) -> Job:
@@ -213,11 +220,84 @@ def test_a_job_can_be_looked_up_by_name(scheduler_for):
 def test_the_app_registers_its_jobs_with_the_configured_interval(app, settings, clock):
     jobs = {item.name: item for item in app_jobs(app, settings, clock)}
 
-    assert set(jobs) == {TRACK_SIGNUPS, SYNC_ACTIVE, CAPTURE_ENQUEUE, CAPTURE_DRAIN}
+    assert set(jobs) == {
+        TRACK_SIGNUPS,
+        SYNC_ACTIVE,
+        CAPTURE_ENQUEUE,
+        CAPTURE_DRAIN,
+        LOBBY_LINKS,
+        SKIMMER_HEAD,
+        SKIMMER_WORKERS,
+        SKIMMER_OPEN_CHECK,
+        SKIMMER_STATS_PRUNE,
+    }
     assert jobs[TRACK_SIGNUPS].interval == timedelta(hours=6)
     assert jobs[SYNC_ACTIVE].interval == timedelta(minutes=30)
     assert jobs[CAPTURE_ENQUEUE].interval == timedelta(hours=1)
     assert jobs[CAPTURE_DRAIN].interval == timedelta(minutes=1)
+    assert jobs[LOBBY_LINKS].interval == timedelta(minutes=30)
+    assert jobs[SKIMMER_HEAD].interval == timedelta(seconds=60)
+    assert jobs[SKIMMER_OPEN_CHECK].interval == timedelta(minutes=5)
+    assert jobs[SKIMMER_STATS_PRUNE].interval == timedelta(hours=1)
+
+
+def test_a_switched_off_scanner_registers_none_of_its_jobs(app, settings, clock):
+    off = dataclasses.replace(settings, scanner_enabled=False)
+
+    names = {
+        item.name
+        for item in build_jobs(off, clock, app.state.wybin, app.state.osu, app.state.skimmer)
+    }
+
+    assert names == {TRACK_SIGNUPS, SYNC_ACTIVE, CAPTURE_ENQUEUE, CAPTURE_DRAIN, LOBBY_LINKS}
+
+
+def test_the_lobby_link_job_follows_the_wybin_poll_interval(app, settings, clock):
+    slow = dataclasses.replace(settings, wybin_poll_minutes=45)
+
+    jobs = {
+        item.name: item
+        for item in build_jobs(slow, clock, app.state.wybin, app.state.osu, app.state.skimmer)
+    }
+
+    assert jobs[LOBBY_LINKS].interval == timedelta(minutes=45)
+
+
+def test_a_pool_sync_makes_the_scanner_rebuild_its_pool_index(
+    client, app, settings, clock, db, wybin
+):
+    wybin.load_defaults()
+    from tests.support import add_user
+
+    add_user(db, 1001, "AdminAmy")
+    run(import_tournament(db, app.state.wybin, "synthetic-cup", 1001, clock))
+    skimmer = app.state.skimmer
+    skimmer.pool.get(db, clock.now())
+    assert skimmer.pool._index is not None
+    sync_job = {item.name: item for item in app_jobs(app, settings, clock)}[SYNC_ACTIVE]
+
+    assert run(Scheduler(settings.db_path, clock, [sync_job]).run_once(sync_job)) is True
+
+    assert skimmer.pool._index is None
+
+
+def test_the_lobby_link_job_reads_the_lobbies_wybin_names(client, app, settings, clock, db, osu):
+    from tests.support import add_match, add_team, add_tournament
+
+    tid = add_tournament(db, "Spring Cup")
+    team = add_team(db, tid, "Ours", ours=True)
+    other = add_team(db, tid, "Theirs")
+    match_id = add_match(db, tid, team, other, "2026-11-10T18:00:00Z")
+    db.execute("UPDATE matches SET mp_match_id = 4242 WHERE id = ?", (match_id,))
+    osu.add_match(4242, "Spring Cup: Ours vs Theirs")
+    job = {item.name: item for item in app_jobs(app, settings, clock)}[LOBBY_LINKS]
+
+    assert run(Scheduler(settings.db_path, clock, [job]).run_once(job)) is True
+
+    assert db.execute("SELECT name, discovered_by FROM lobbies").fetchall()[0][:] == (
+        "Spring Cup: Ours vs Theirs",
+        "wybin",
+    )
 
 
 def test_workers_start_with_the_app_and_stop_with_it(settings, clock, osu, wybin):
@@ -259,8 +339,6 @@ def test_a_partial_failure_is_recorded_with_its_counts_and_no_false_promise(
     add_user(db, 1001, "AdminAmy")
     sync_job = {item.name: item for item in app_jobs(app, settings, clock)}[SYNC_ACTIVE]
     scheduler = Scheduler(settings.db_path, clock, [sync_job])
-    from app.services.wybin_sync import import_tournament
-
     run(import_tournament(db, app.state.wybin, "synthetic-cup", 1001, clock))
     run(import_tournament(db, app.state.wybin, "synthetic-solo", 1001, clock))
     wybin.mappools.clear()  # the pool endpoint now fails for both

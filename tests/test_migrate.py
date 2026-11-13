@@ -27,6 +27,13 @@ EXPECTED_TABLES = {
     "capture_log",
     "matches",
     "availability",
+    "lobbies",
+    "lobby_pool_hits",
+    "lobby_players",
+    "scan_open",
+    "scan_gaps",
+    "scan_stats",
+    "practice_targets",
 }
 
 
@@ -531,3 +538,159 @@ def test_availability_only_accepts_yes_maybe_and_no(migrated):
 
     with pytest.raises(sqlite3.IntegrityError):
         migrated.execute(SLOT_INSERT, (tid, 5, "2026-11-16T18:00:00Z", "perhaps"))
+
+
+# --- 0006: lobbies, scanner bookkeeping and practice targets ---
+
+LOBBY_INSERT = (
+    "INSERT INTO lobbies (mp_match_id, name, first_seen_at, discovered_by) "
+    "VALUES (?, 'room', '2026-11-12T12:00:00Z', ?)"
+)
+HIT_INSERT = "INSERT INTO lobby_pool_hits (mp_match_id, game_id, pool_map_id) VALUES (1, 5, ?)"
+PLAYER_INSERT = "INSERT INTO lobby_players (mp_match_id, tournament_id, osu_id) VALUES (1, ?, 7)"
+TARGET_INSERT = (
+    "INSERT INTO practice_targets (tournament_id, pool_map_id, osu_id, target_score, target_acc, "
+    "note, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'x')"
+)
+
+
+def _pool_map(migrated, tournament_id: int) -> int:
+    stage = migrated.execute(
+        "INSERT INTO stages (tournament_id, name, sort_order, is_qualifier) VALUES (?, 'Q', 1, 0)",
+        (tournament_id,),
+    )
+    pool_map = migrated.execute(
+        "INSERT INTO pool_maps (stage_id, slot, bracket, required_mods, is_freemod, "
+        "is_tiebreaker, sort_order) VALUES (?, 'NM1', 'NoMod', '', 0, 0, 1)",
+        (stage.lastrowid,),
+    )
+    return int(pool_map.lastrowid)
+
+
+def test_a_lobby_is_stored_once_and_only_with_a_known_discovery_source(migrated):
+    for number, source in enumerate(("scan", "wybin", "manual")):
+        migrated.execute(LOBBY_INSERT, (number, source))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(LOBBY_INSERT, (0, "scan"))
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(LOBBY_INSERT, (9, "guess"))
+    row = migrated.execute("SELECT is_complete FROM lobbies WHERE mp_match_id = 0").fetchone()
+    assert row[0] == 0
+
+
+def test_hits_and_players_leave_with_their_lobby(migrated):
+    tid = _tournament(migrated)
+    pool_map = _pool_map(migrated, tid)
+    migrated.execute(LOBBY_INSERT, (1, "scan"))
+    migrated.execute(HIT_INSERT, (pool_map,))
+    migrated.execute(PLAYER_INSERT, (tid,))
+
+    migrated.execute("DELETE FROM lobbies WHERE mp_match_id = 1")
+
+    assert migrated.execute("SELECT COUNT(*) FROM lobby_pool_hits").fetchone()[0] == 0
+    assert migrated.execute("SELECT COUNT(*) FROM lobby_players").fetchone()[0] == 0
+
+
+def test_a_hit_is_stored_once_per_game_and_pool_map_and_leaves_with_its_map(migrated):
+    tid = _tournament(migrated)
+    pool_map = _pool_map(migrated, tid)
+    migrated.execute(LOBBY_INSERT, (1, "scan"))
+    migrated.execute(HIT_INSERT, (pool_map,))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(HIT_INSERT, (pool_map,))
+    migrated.execute("DELETE FROM pool_maps WHERE id = ?", (pool_map,))
+
+    assert migrated.execute("SELECT COUNT(*) FROM lobby_pool_hits").fetchone()[0] == 0
+    assert migrated.execute("SELECT COUNT(*) FROM lobbies").fetchone()[0] == 1
+
+
+def test_a_player_is_noted_once_per_lobby_and_tournament_and_leaves_with_the_tournament(migrated):
+    tid = _tournament(migrated)
+    migrated.execute(LOBBY_INSERT, (1, "scan"))
+    migrated.execute(PLAYER_INSERT, (tid,))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(PLAYER_INSERT, (tid,))
+    migrated.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
+
+    assert migrated.execute("SELECT COUNT(*) FROM lobby_players").fetchone()[0] == 0
+    assert migrated.execute("SELECT COUNT(*) FROM lobbies").fetchone()[0] == 1  # lobbies are public
+
+
+def test_a_skipped_range_must_not_end_before_it_starts_and_needs_a_known_reason(migrated):
+    gap = "INSERT INTO scan_gaps (start_id, end_id, reason, created_at) VALUES (?, ?, ?, 'x')"
+    migrated.execute(gap, (5, 5, "skipped_backlog"))
+    migrated.execute(gap, (1, 9, "admin_skip"))
+    migrated.execute(gap, (7, 8, "fetch_error"))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(gap, (9, 1, "skipped_backlog"))
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(gap, (1, 9, "bored"))
+    assert migrated.execute("SELECT backfilled_until FROM scan_gaps").fetchone()[0] is None
+
+
+def test_scan_counters_start_at_zero_and_a_minute_is_one_row(migrated):
+    migrated.execute("INSERT INTO scan_stats (minute) VALUES ('2026-11-12T12:30')")
+
+    row = migrated.execute(
+        "SELECT ids_scanned, not_found, matches_with_hits, requests, head_id, errors "
+        "FROM scan_stats"
+    ).fetchone()
+    assert tuple(row) == (0, 0, 0, 0, None, 0)
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute("INSERT INTO scan_stats (minute) VALUES ('2026-11-12T12:30')")
+
+
+def test_an_open_lobby_is_tracked_once(migrated):
+    sql = "INSERT INTO scan_open (mp_match_id, first_seen_at, next_check_at) VALUES (1, 'a', 'b')"
+    migrated.execute(sql)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(sql)
+    row = migrated.execute("SELECT events_fetched, last_event_id FROM scan_open").fetchone()
+    assert tuple(row) == (0, None)
+
+
+def test_a_map_has_one_team_target_and_one_target_per_player(migrated):
+    tid = _tournament(migrated)
+    pool_map = _pool_map(migrated, tid)
+    migrated.execute(TARGET_INSERT, (tid, pool_map, None, 800_000, None, None))
+    migrated.execute(TARGET_INSERT, (tid, pool_map, 7, 700_000, None, None))
+    migrated.execute(TARGET_INSERT, (tid, pool_map, 8, None, 97.5, None))
+
+    with pytest.raises(sqlite3.IntegrityError):  # a second team target
+        migrated.execute(TARGET_INSERT, (tid, pool_map, None, 900_000, None, None))
+    with pytest.raises(sqlite3.IntegrityError):  # a second target for the same player
+        migrated.execute(TARGET_INSERT, (tid, pool_map, 7, 1, None, None))
+
+
+@pytest.mark.parametrize(
+    ("score", "accuracy", "note"),
+    [
+        (None, None, None),
+        (-1, None, None),
+        (2_000_000_001, None, None),
+        (None, 100.5, None),
+        (None, -1, None),
+        (1, None, "x" * 501),
+    ],
+)
+def test_a_target_needs_a_figure_inside_the_limits(migrated, score, accuracy, note):
+    tid = _tournament(migrated)
+    pool_map = _pool_map(migrated, tid)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(TARGET_INSERT, (tid, pool_map, 7, score, accuracy, note))
+
+
+def test_targets_leave_with_their_tournament(migrated):
+    tid = _tournament(migrated)
+    pool_map = _pool_map(migrated, tid)
+    migrated.execute(TARGET_INSERT, (tid, pool_map, 7, 1, None, None))
+
+    migrated.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
+
+    assert migrated.execute("SELECT COUNT(*) FROM practice_targets").fetchone()[0] == 0

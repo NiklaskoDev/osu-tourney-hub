@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from enum import IntEnum
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -278,3 +279,45 @@ class Match:
 
     def involves(self, team_id: int | None) -> bool:
         return team_id is not None and team_id in (self.team1_id, self.team2_id)
+
+
+@dataclass(frozen=True)
+class MatchSummary:
+    """A multiplayer lobby as osu! lists it. `end_time` is empty while the lobby is open."""
+
+    id: int
+    name: str
+    start_time: str | None
+    end_time: str | None
+
+
+@dataclass(frozen=True)
+class FetchedMatch:
+    """A multiplayer lobby with its events (raw osu! event objects, oldest first). `truncated`
+    means older events were left out because the page limit was reached."""
+
+    match: MatchSummary
+    events: list[dict[str, Any]]
+    truncated: bool
+
+
+@dataclass(frozen=True)
+class MpScore:
+    osu_id: int
+    score: int
+    accuracy: float  # 0 to 100
+    max_combo: int | None
+    misses: int | None
+    mods: str  # canonical
+    passed: bool
+
+
+@dataclass(frozen=True)
+class MpGame:
+    game_id: int
+    beatmap_id: int
+    gamemode: int
+    scoring: str  # a value of the scores table: v2, v1 or unknown
+    mods: str  # the room's required mods, canonical
+    played_at: str | None  # when the game ended (else started), UTC
+    scores: list[MpScore]

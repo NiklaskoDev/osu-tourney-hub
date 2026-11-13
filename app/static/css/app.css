@@ -634,6 +634,14 @@ textarea.field__control {
   border-bottom: 0;
 }
 
+/* A problem with a map, said in words next to an icon (never colour alone) */
+.flag {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--warning);
+}
+
 .old-flag {
   padding: 0 var(--space-1);
   border: 1px solid var(--border);

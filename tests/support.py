@@ -1,6 +1,7 @@
 """Test doubles and database helpers shared by the test modules. Everything here is synthetic."""
 
 import copy
+import itertools
 import json
 import sqlite3
 from pathlib import Path
@@ -43,6 +44,10 @@ class FakeOsu:
         self.garbage_paths: set[str] = set()  # these URL paths answer 200 with a non-JSON body
         self.beatmaps: dict[int, dict] = {}
         self.api_scores: dict[tuple[int, int], list[dict]] = {}  # (beatmap id, user id) -> scores
+        self.matches: dict[int, dict] = {}  # lobby id -> {"match": {...}, "events": [...]}
+        self.match_statuses: dict[int, int] = {}  # lobby id -> status always answered instead
+        self._event_ids = itertools.count(5000)
+        self._game_ids = itertools.count(9000)
         self.transport = httpx.MockTransport(self._handle)
 
     def add_user(self, osu_id: int, username: str, country: str = "DE") -> None:
@@ -93,6 +98,93 @@ class FakeOsu:
         self.api_scores.setdefault((beatmap_id, user_id), []).append(score)
         return score
 
+    def add_match(
+        self,
+        match_id: int,
+        name: str = "Practice room",
+        start_time: str = "2026-11-12T10:00:00+00:00",
+        end_time: str | None = "2026-11-12T11:00:00+00:00",
+    ) -> dict:
+        """A multiplayer lobby as `/matches/{id}` and `/matches` show it. `end_time=None` is a lobby
+        that is still open."""
+        lobby = {
+            "match": {"id": match_id, "name": name, "start_time": start_time, "end_time": end_time},
+            "events": [],
+        }
+        self.matches[match_id] = lobby
+        return lobby
+
+    def add_game(
+        self,
+        match_id: int,
+        beatmap_id: int,
+        scores: list[tuple[int, int]] | None = None,
+        mods: list[str] | None = None,
+        mode_int: int = 0,
+        scoring_type: str = "scorev2",
+        ended: bool = True,
+        accuracy: float = 0.98,
+        score_mods: list[str] | None = None,
+    ) -> dict:
+        """Append a played game (an event) to a lobby; `scores` are (user id, score) pairs. With
+        `ended=False` the game is still being played: no end time and no scores yet."""
+        game_id = next(self._game_ids)
+        game = {
+            "id": game_id,
+            "beatmap_id": beatmap_id,
+            "start_time": "2026-11-12T10:10:00+00:00",
+            "end_time": "2026-11-12T10:14:00+00:00" if ended else None,
+            "mode": ["osu", "taiko", "fruits", "mania"][mode_int],
+            "mode_int": mode_int,
+            "scoring_type": scoring_type,
+            "team_type": "head-to-head",
+            "mods": mods or [],
+            "scores": [
+                {
+                    "user_id": user_id,
+                    "score": score,
+                    "accuracy": accuracy,
+                    "max_combo": 400,
+                    "mods": score_mods or [],
+                    "statistics": {"count_miss": 2},
+                    "passed": True,
+                    "match": {"slot": 0, "team": "none", "pass": True},
+                }
+                for user_id, score in (scores or [])
+            ]
+            if ended
+            else [],
+        }
+        event = {
+            "id": next(self._event_ids),
+            "detail": {"type": "other"},
+            "timestamp": "2026-11-12T10:14:00+00:00",
+            "game": game,
+        }
+        self.matches[match_id]["events"].append(event)
+        return event
+
+    def finish_game(self, match_id: int, event: dict, scores: list[tuple[int, int]]) -> None:
+        """A game that was in progress ends: the same event now has an end time and scores."""
+        game = event["game"]
+        game["end_time"] = "2026-11-12T10:14:00+00:00"
+        game["scores"] = [
+            {
+                "user_id": user_id,
+                "score": score,
+                "accuracy": 0.97,
+                "max_combo": 300,
+                "mods": [],
+                "statistics": {"count_miss": 1},
+                "passed": True,
+                "match": {"slot": 0, "team": "none", "pass": True},
+            }
+            for user_id, score in scores
+        ]
+
+    def match_requests(self, match_id: int) -> list[httpx.Request]:
+        return [r for r in self.requests if r.url.path == f"/api/v2/matches/{match_id}"]
+
     def calls(self, method: str, path_suffix: str) -> list[httpx.Request]:
         return [r for r in self.requests if r.method == method and r.url.path.endswith(path_suffix)]
 
@@ -111,6 +203,10 @@ class FakeOsu:
             return self._me(request)
         if request.method == "GET" and path.startswith("/api/v2/users/"):
             return self._user(request, path.rsplit("/", 1)[1])
+        if request.method == "GET" and path == "/api/v2/matches":
+            return self._match_list(request)
+        if request.method == "GET" and path.startswith("/api/v2/matches/"):
+            return self._match(request, path.rsplit("/", 1)[1])
         if request.method == "GET" and path.startswith("/api/v2/beatmaps/"):
             if "/scores/users/" in path:
                 return self._user_scores(request, path)
@@ -152,6 +248,59 @@ class FakeOsu:
         if int(request.headers.get("x-api-version", "0")) < int(SCORE_API_VERSION):
             scores = [_legacy_shape(score) for score in scores]
         return httpx.Response(200, json={"scores": scores})
+
+    def _match_list(self, request: httpx.Request) -> httpx.Response:
+        """`GET /matches`: newest first, `limit` per page, `cursor_string` continues below an id."""
+        if request.headers.get("Authorization") != f"Bearer {APP_TOKEN}":
+            return httpx.Response(401)
+        params = request.url.params
+        below = int(params["cursor_string"]) if "cursor_string" in params else None
+        wanted = sorted(self.matches, reverse=True)
+        if params.get("active") == "true":
+            wanted = [i for i in wanted if self.matches[i]["match"]["end_time"] is None]
+        if below is not None:
+            wanted = [i for i in wanted if i < below]
+        limit = int(params.get("limit", "50"))
+        page, more = wanted[:limit], len(wanted) > limit
+        return httpx.Response(
+            200,
+            json={
+                "matches": [self.matches[i]["match"] for i in page],
+                "params": {"limit": limit, "sort": params.get("sort", "id_desc")},
+                "cursor_string": str(page[-1]) if more else None,
+            },
+        )
+
+    def _match(self, request: httpx.Request, raw_id: str) -> httpx.Response:
+        """`GET /matches/{id}`: the latest `limit` events, or those `before`/`after` an event id."""
+        if request.headers.get("Authorization") != f"Bearer {APP_TOKEN}":
+            return httpx.Response(401)
+        match_id = int(raw_id)
+        if match_id in self.match_statuses:
+            return httpx.Response(self.match_statuses[match_id])
+        lobby = self.matches.get(match_id)
+        if lobby is None:
+            return httpx.Response(404)
+        params = request.url.params
+        limit = int(params.get("limit", "100"))
+        events = sorted(lobby["events"], key=lambda event: event["id"])
+        if "after" in params:
+            page = [e for e in events if e["id"] > int(params["after"])][:limit]
+        elif "before" in params:
+            page = [e for e in events if e["id"] < int(params["before"])][-limit:]
+        else:
+            page = events[-limit:]
+        return httpx.Response(
+            200,
+            json={
+                "match": lobby["match"],
+                "events": copy.deepcopy(page),
+                "users": [],
+                "first_event_id": events[0]["id"] if events else None,
+                "latest_event_id": events[-1]["id"] if events else None,
+                "current_game_id": None,
+            },
+        )
 
     def _user(self, request: httpx.Request, raw_id: str) -> httpx.Response:
         if self.reject_lookups > 0:

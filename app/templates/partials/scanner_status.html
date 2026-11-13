@@ -1,0 +1,18 @@
+{#- The scanner's status. It refreshes itself every 15 seconds by swapping this whole block. -#}
+{% from "components/alert.html" import alert %}
+{% from "components/table.html" import table %}
+<div id="scanner-status" class="stack" hx-get="/admin/scanner/status" hx-trigger="every 15s" hx-swap="outerHTML">
+  {% if status.falling_behind %}
+  {% call alert("warning", "Falling behind") %}{{ falling_behind_text }}{% endcall %}
+  {% endif %}
+  {% call table("Scanner status") %}
+  <tbody>
+    {% for label, text in status_rows %}
+    <tr>
+      <th scope="row">{{ label }}</th>
+      <td>{{ text }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+</div>

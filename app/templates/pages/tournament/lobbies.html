@@ -1,0 +1,83 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/countdown.html" import local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% block title %}Lobbies - {{ tournament.name }} - {% endblock %}
+{% block tournament_content %}
+<div class="page__header">
+  <h1>Lobbies</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}Lobbies can no longer be added. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+
+<p class="muted">Multiplayer lobbies in which a map of a current pool was played, whatever the lobby is called. Players are listed only when they are registered in this tournament.</p>
+
+<form class="row row--top" method="get" action="/t/{{ tournament.id }}/lobbies">
+  {{ field("stage", "Stage", options=stage_options, value=stage_value, required=true) }}
+  {{ field("player", "Player", options=player_options, value=player_value, required=true) }}
+  <div>{{ button("Filter lobbies", variant="secondary", type="submit") }}</div>
+</form>
+
+{% if rows %}
+{% call table("Lobbies with pool maps played") %}
+<thead>
+  <tr>
+    <th scope="col">Lobby</th>
+    <th scope="col">Started</th>
+    <th scope="col">Maps played</th>
+    <th scope="col">Players found</th>
+    <th scope="col">State</th>
+  </tr>
+</thead>
+<tbody>
+  {% for row in rows %}
+  <tr>
+    <th scope="row">
+      <a class="mono" href="{{ row.link }}" rel="noopener noreferrer">{{ row.lobby.mp_match_id }}</a>
+      {% if row.lobby.name %}<span class="cell-sub muted">{{ row.lobby.name }}</span>{% endif %}
+    </th>
+    <td>{% if row.lobby.started_at %}{{ local_time(row.lobby.started_at) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+    <td>
+      {% if row.maps %}<span class="row row--nowrap">{% for slot in row.maps %}{{ badge(slot) }}{% endfor %}</span>{% else %}<span class="muted">None</span>{% endif %}
+    </td>
+    <td>
+      {% if row.teams %}
+      <ul class="picks">
+        {% for team in row.teams %}
+        <li><span class="muted">{{ team.name }}:</span> {% for player in team.players %}{% if player.ours %}<strong>{{ player.name }}</strong> <span class="muted">(our team)</span>{% else %}{{ player.name }}{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</li>
+        {% endfor %}
+      </ul>
+      {% else %}<span class="muted">None registered</span>{% endif %}
+    </td>
+    <td>{{ "Finished" if row.lobby.is_complete else "Still open or being read" }}<span class="cell-sub muted">{{ {"scan": "Found by the scanner", "wybin": "Linked on wybin", "manual": "Added by hand"}[row.lobby.discovered_by] }}</span></td>
+  </tr>
+  {% endfor %}
+</tbody>
+{% endcall %}
+{% if rows|length >= limit %}<p class="muted">Showing the {{ limit }} most recent lobbies. Narrow the list with the filters.</p>{% endif %}
+{% elif filtered %}
+{{ empty_state("No lobby matches these filters.") }}
+{% else %}
+{{ empty_state("No lobby with a pool map has been found yet. The scanner adds lobbies as they are played; you can also add one below.") }}
+{% endif %}
+
+{% if can_add %}
+<section class="stack" aria-labelledby="add-heading">
+  <h2 id="add-heading">Add a lobby link</h2>
+  <p class="muted">For a lobby the scanner missed, such as one that was already over before it started. It is saved even if no pool map was played in it.</p>
+  <form class="stack" method="post" action="/t/{{ tournament.id }}/lobbies">
+    {{ csrf_field(csrf_token) }}
+    {{ field("link", "Lobby link", value=link_entered|default(""), required=true, error=link_error|default(none), placeholder="https://osu.ppy.sh/community/matches/123456", autocomplete="off", disabled=archived) }}
+    <div>{{ button("Add lobby", variant="primary", type="submit", icon_name="plus", disabled=archived) }}</div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

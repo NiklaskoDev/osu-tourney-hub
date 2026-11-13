@@ -1,0 +1,65 @@
+{% extends "layout/shell.html" %}
+{% from "components/button.html" import button %}
+{% from "components/countdown.html" import local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/table.html" import table %}
+{% block title %}Scanner - {% endblock %}
+{% block content %}
+<div class="page__header">
+  <h1>Lobby scanner</h1>
+  <p class="muted"><a href="/admin">Back to Admin</a></p>
+</div>
+
+<div class="stack sections">
+  <section class="stack" aria-labelledby="status-heading">
+    <h2 id="status-heading">Status</h2>
+    <p class="muted">Reads every new multiplayer lobby id and keeps the lobbies in which a map of a current pool was played. The figures refresh every 15 seconds.</p>
+    {% include "partials/scanner_status.html" %}
+    {% if status.enabled %}
+    <form method="post" action="/admin/scanner/{{ 'resume' if status.paused else 'pause' }}">
+      {{ csrf_field(csrf_token) }}
+      {{ button("Resume scanner" if status.paused else "Pause scanner", variant="primary" if status.paused else "secondary", type="submit") }}
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="stack" aria-labelledby="gaps-heading">
+    <h2 id="gaps-heading">Skipped ranges</h2>
+    {% if status.gaps %}
+    <p class="muted">Ranges of lobby ids the scanner skipped to stay recent. A backfill reads them oldest first, and only while the scanner is nearly caught up.</p>
+    {% call table("Skipped lobby id ranges") %}
+    <thead>
+      <tr>
+        <th scope="col">Ids</th>
+        <th scope="col">Size</th>
+        <th scope="col">Skipped</th>
+        <th scope="col">Backfill</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for gap in status.gaps %}
+      <tr>
+        <th scope="row"><span class="mono">{{ gap.start_id }} to {{ gap.end_id }}</span></th>
+        <td class="num">{{ "{:,}".format(gap.size) }}</td>
+        <td>{{ local_time(gap.created_at) }}</td>
+        <td>
+          {% if gap.backfill_done %}Done
+          {% elif gap.backfill_requested %}{{ "{:,}".format(gap.backfilled_until - gap.start_id + 1) }} of {{ "{:,}".format(gap.size) }} ids read
+          {% else %}
+          <form method="post" action="/admin/scanner/gaps/{{ gap.id }}/backfill">
+            {{ csrf_field(csrf_token) }}
+            {{ button("Backfill", variant="secondary", type="submit") }}
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    {% else %}
+    {{ empty_state("The scanner has not skipped any ids.") }}
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

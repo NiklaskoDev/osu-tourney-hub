@@ -7,6 +7,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 REQUIRED_VARIABLES = (
@@ -27,6 +28,14 @@ MIN_WYBIN_POLL_MINUTES = 10
 DEFAULT_WYBIN_MIN_INTERVAL_SECONDS = 2
 MAX_WYBIN_MIN_INTERVAL_SECONDS = 60
 DEFAULT_CAPTURE_REFRESH_HOURS = 24
+DEFAULT_SCANNER_BUDGET_PER_MIN = 30
+MIN_SCANNER_WORKERS = 1
+MAX_SCANNER_WORKERS = 8
+DEFAULT_SCANNER_WORKERS = 4
+DEFAULT_SCANNER_MAX_BACKLOG = 5000
+DEFAULT_SCANNER_OPEN_MAX_HOURS = 24
+_TRUE_WORDS = frozenset({"true", "1", "yes", "on"})
+_FALSE_WORDS = frozenset({"false", "0", "no", "off"})
 
 
 class ConfigError(Exception):
@@ -58,6 +67,11 @@ class Settings:
     wybin_poll_minutes: int = DEFAULT_WYBIN_POLL_MINUTES
     wybin_min_interval_seconds: int = DEFAULT_WYBIN_MIN_INTERVAL_SECONDS
     capture_refresh_hours: int = DEFAULT_CAPTURE_REFRESH_HOURS
+    scanner_enabled: bool = True
+    scanner_budget_per_min: int = DEFAULT_SCANNER_BUDGET_PER_MIN
+    scanner_workers: int = DEFAULT_SCANNER_WORKERS
+    scanner_max_backlog: int = DEFAULT_SCANNER_MAX_BACKLOG
+    scanner_open_max_hours: int = DEFAULT_SCANNER_OPEN_MAX_HOURS
 
     @property
     def db_path(self) -> Path:
@@ -125,6 +139,8 @@ class Settings:
         if capture_hours is None:
             invalid["CAPTURE_REFRESH_HOURS"] = "must be a number of at least 1"
 
+        scanner = _scanner_settings(environ, osu_api_rate, invalid)
+
         if missing or invalid:
             raise ConfigError(missing, invalid)
 
@@ -140,7 +156,63 @@ class Settings:
             wybin_poll_minutes=wybin_poll,
             wybin_min_interval_seconds=wybin_interval,
             capture_refresh_hours=capture_hours,
+            **scanner,
         )
+
+
+def _scanner_settings(
+    environ: Mapping[str, str], osu_api_rate: int | None, invalid: dict[str, str]
+) -> dict[str, Any]:
+    """The SCANNER_* variables as `Settings` keyword arguments; problems are added to `invalid`.
+
+    The scanner's own request budget must stay below the overall osu! budget, or it could use up
+    everything the live and interactive calls need. When it is not set, it defaults to 30 or, if
+    the overall budget is lower, to one request less than that budget."""
+    enabled = _parse_bool(environ.get("SCANNER_ENABLED", ""), True)
+    if enabled is None:
+        invalid["SCANNER_ENABLED"] = "must be true or false"
+    default_budget = DEFAULT_SCANNER_BUDGET_PER_MIN
+    if osu_api_rate is not None:
+        default_budget = max(1, min(default_budget, osu_api_rate - 1))
+    budget = _parse_int(environ.get("SCANNER_BUDGET_PER_MIN", ""), default_budget, 1)
+    if budget is None:
+        invalid["SCANNER_BUDGET_PER_MIN"] = "must be a number of at least 1"
+    elif enabled and osu_api_rate is not None and budget >= osu_api_rate:
+        invalid["SCANNER_BUDGET_PER_MIN"] = "must be lower than OSU_API_RATE_PER_MIN"
+    workers = _parse_int(
+        environ.get("SCANNER_WORKERS", ""),
+        DEFAULT_SCANNER_WORKERS,
+        MIN_SCANNER_WORKERS,
+        MAX_SCANNER_WORKERS,
+    )
+    if workers is None:
+        invalid["SCANNER_WORKERS"] = (
+            f"must be a number from {MIN_SCANNER_WORKERS} to {MAX_SCANNER_WORKERS}"
+        )
+    backlog = _parse_int(environ.get("SCANNER_MAX_BACKLOG", ""), DEFAULT_SCANNER_MAX_BACKLOG, 1)
+    if backlog is None:
+        invalid["SCANNER_MAX_BACKLOG"] = "must be a number of at least 1"
+    open_hours = _parse_int(
+        environ.get("SCANNER_OPEN_MAX_HOURS", ""), DEFAULT_SCANNER_OPEN_MAX_HOURS, 1
+    )
+    if open_hours is None:
+        invalid["SCANNER_OPEN_MAX_HOURS"] = "must be a number of at least 1"
+    return {
+        "scanner_enabled": enabled,
+        "scanner_budget_per_min": budget,
+        "scanner_workers": workers,
+        "scanner_max_backlog": backlog,
+        "scanner_open_max_hours": open_hours,
+    }
+
+
+def _parse_bool(raw: str, default: bool) -> bool | None:
+    value = raw.strip().lower()
+    if not value:
+        return default
+    if value in _TRUE_WORDS:
+        return True
+    return False if value in _FALSE_WORDS else None
 
 
 def _is_origin(url: str) -> bool:

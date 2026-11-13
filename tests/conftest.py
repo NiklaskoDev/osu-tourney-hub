@@ -9,6 +9,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.clients.http import make_http_client
+from app.clients.osu import OsuClient
 from app.clients.ratelimit import RateLimiter
 from app.config import Settings
 from app.db.connection import open_db
@@ -73,6 +75,24 @@ def sheets() -> FakeSheets:
 
 
 @pytest.fixture
+def scan_client(settings, clock, osu) -> OsuClient:
+    """An osu! client on the fake osu! with no rate limit and no waiting, for service tests."""
+
+    async def no_sleep(seconds: float) -> None:
+        return None
+
+    return OsuClient(
+        settings,
+        make_http_client(osu.transport),
+        RateLimiter(rate_per_min=60_000, burst=1000),
+        clock,
+        transport=osu.transport,
+        sleep=no_sleep,
+        scan_limiter=RateLimiter(rate_per_min=60_000, burst=1000),
+    )
+
+
+@pytest.fixture
 def osu_delays() -> list[float]:
     """Back-off delays the osu! client asked for. Tests never really sleep."""
     return []
@@ -93,6 +113,7 @@ def app(settings, clock, osu, wybin, sheets, osu_delays) -> FastAPI:
     # The real limiter allows 60 calls a minute after a burst of 5, which would slow down tests
     # that log in several times; back-off sleeping is recorded instead of waited for.
     built.state.osu._limiter = RateLimiter(rate_per_min=60_000, burst=1000)
+    built.state.osu._scan_limiter = RateLimiter(rate_per_min=60_000, burst=1000)
     built.state.osu._sleep = record_delay
     built.state.wybin._sleep = no_sleep
     return built

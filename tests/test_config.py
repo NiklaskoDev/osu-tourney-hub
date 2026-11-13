@@ -173,6 +173,7 @@ def test_osu_api_rate_defaults_to_the_maximum(valid_env):
 @pytest.mark.parametrize(("raw", "expected"), [("1", 1), ("30", 30), (" 60 ", 60), ("", 60)])
 def test_osu_api_rate_is_read_from_the_environment(valid_env, raw, expected):
     valid_env["OSU_API_RATE_PER_MIN"] = raw
+    valid_env["SCANNER_ENABLED"] = "false"  # a budget of 1 a minute leaves nothing for the scanner
 
     assert Settings.from_env(valid_env).osu_api_rate_per_min == expected
 
@@ -241,3 +242,125 @@ def test_capture_refresh_hours_below_one_or_not_a_number_is_rejected(valid_env, 
         Settings.from_env(valid_env)
 
     assert list(caught.value.invalid) == ["CAPTURE_REFRESH_HOURS"]
+
+
+# --- the lobby scanner ---
+
+
+def test_the_scanner_defaults(valid_env):
+    settings = Settings.from_env(valid_env)
+
+    assert settings.scanner_enabled is True
+    assert settings.scanner_budget_per_min == 30
+    assert settings.scanner_workers == 4
+    assert settings.scanner_max_backlog == 5000
+    assert settings.scanner_open_max_hours == 24
+
+
+def test_the_scanner_settings_are_read_from_the_environment(valid_env):
+    valid_env.update(
+        {
+            "SCANNER_ENABLED": "false",
+            "SCANNER_BUDGET_PER_MIN": "45",
+            "SCANNER_WORKERS": "8",
+            "SCANNER_MAX_BACKLOG": "100",
+            "SCANNER_OPEN_MAX_HOURS": "6",
+        }
+    )
+
+    settings = Settings.from_env(valid_env)
+
+    assert settings.scanner_enabled is False
+    assert (settings.scanner_budget_per_min, settings.scanner_workers) == (45, 8)
+    assert (settings.scanner_max_backlog, settings.scanner_open_max_hours) == (100, 6)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("true", True),
+        ("TRUE", True),
+        ("1", True),
+        ("yes", True),
+        (" on ", True),
+        ("", True),
+        ("false", False),
+        ("0", False),
+        ("No", False),
+        ("off", False),
+    ],
+)
+def test_scanner_enabled_reads_the_usual_yes_and_no_words(valid_env, raw, expected):
+    valid_env["SCANNER_ENABLED"] = raw
+
+    assert Settings.from_env(valid_env).scanner_enabled is expected
+
+
+def test_scanner_enabled_rejects_anything_else(valid_env):
+    valid_env["SCANNER_ENABLED"] = "maybe"
+
+    with pytest.raises(ConfigError) as caught:
+        Settings.from_env(valid_env)
+
+    assert list(caught.value.invalid) == ["SCANNER_ENABLED"]
+
+
+@pytest.mark.parametrize("budget", ["60", "61"])
+def test_a_scanner_budget_at_or_above_the_overall_budget_fails_at_startup(valid_env, budget):
+    valid_env["SCANNER_BUDGET_PER_MIN"] = budget
+
+    with pytest.raises(ConfigError) as caught:
+        Settings.from_env(valid_env)
+
+    assert caught.value.invalid == {
+        "SCANNER_BUDGET_PER_MIN": "must be lower than OSU_API_RATE_PER_MIN"
+    }
+
+
+def test_the_scanner_budget_is_compared_with_the_configured_overall_budget(valid_env):
+    valid_env["OSU_API_RATE_PER_MIN"] = "20"
+    valid_env["SCANNER_BUDGET_PER_MIN"] = "20"
+
+    with pytest.raises(ConfigError) as caught:
+        Settings.from_env(valid_env)
+
+    assert list(caught.value.invalid) == ["SCANNER_BUDGET_PER_MIN"]
+
+    valid_env["SCANNER_BUDGET_PER_MIN"] = "19"
+    assert Settings.from_env(valid_env).scanner_budget_per_min == 19
+
+
+def test_a_lower_overall_budget_gives_the_scanner_a_smaller_default(valid_env):
+    valid_env["OSU_API_RATE_PER_MIN"] = "20"
+
+    assert Settings.from_env(valid_env).scanner_budget_per_min == 19
+
+
+def test_a_switched_off_scanner_may_keep_a_budget_above_a_small_overall_budget(valid_env):
+    valid_env.update({"OSU_API_RATE_PER_MIN": "10", "SCANNER_BUDGET_PER_MIN": "30"})
+    valid_env["SCANNER_ENABLED"] = "false"
+
+    assert Settings.from_env(valid_env).scanner_budget_per_min == 30
+
+
+@pytest.mark.parametrize(
+    ("name", "raw"),
+    [
+        ("SCANNER_BUDGET_PER_MIN", "0"),
+        ("SCANNER_BUDGET_PER_MIN", "fast"),
+        ("SCANNER_WORKERS", "0"),
+        ("SCANNER_WORKERS", "9"),
+        ("SCANNER_WORKERS", "two"),
+        ("SCANNER_MAX_BACKLOG", "0"),
+        ("SCANNER_MAX_BACKLOG", "-5"),
+        ("SCANNER_OPEN_MAX_HOURS", "0"),
+        ("SCANNER_OPEN_MAX_HOURS", "1.5"),
+    ],
+)
+def test_scanner_numbers_outside_their_range_are_rejected_by_name(valid_env, name, raw):
+    valid_env[name] = raw
+
+    with pytest.raises(ConfigError) as caught:
+        Settings.from_env(valid_env)
+
+    assert list(caught.value.invalid) == [name]

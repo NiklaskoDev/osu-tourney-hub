@@ -1,0 +1,134 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/icon.html" import icon %}
+{% from "components/table.html" import table %}
+{% from "components/tabs.html" import tabs %}
+{% block title %}Coverage - {{ tournament.name }} - {% endblock %}
+
+{% macro map_name(pool_map) -%}
+{%- if pool_map.title -%}
+<span class="map-name" title="{{ pool_map.artist }} - {{ pool_map.title }} [{{ pool_map.version }}]">{{ pool_map.artist }} - {{ pool_map.title }}{% if pool_map.version %} [{{ pool_map.version }}]{% endif %}</span>
+{%- else -%}
+<span class="muted">Map not announced</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro target_text(target) -%}
+{%- if target.target_score is not none %}{{ target.target_score|fmt_score }}{% endif -%}
+{%- if target.target_score is not none and target.target_acc is not none %} and {% endif -%}
+{%- if target.target_acc is not none %}{{ target.target_acc|fmt_acc }}{% endif -%}
+{%- endmacro %}
+
+{% block tournament_content %}
+{% set vals = form_values|default({}) %}
+{% set ff = form_error_field|default(none) %}
+<div class="page__header">
+  <h1>Coverage</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if stage_tabs %}{{ tabs("Stages", stage_tabs) }}{% endif %}
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}Targets are read-only. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+{% if form_error and not ff %}
+{% call alert("error", "Target not saved") %}{{ form_error }}{% endcall %}
+{% endif %}
+
+{% if not stage %}
+{{ empty_state("This tournament has no stages yet." ~ (" They appear here after the next wybin sync." if tournament.source == "wybin" else "")) }}
+{% elif not pool %}
+{{ empty_state("This stage has no maps yet.") }}
+{% elif not view.columns %}
+{{ empty_state("This tournament has no players on its roster yet. Add them on the Members page.") }}
+{% else %}
+<p class="muted">Who has a score on each map, using {{ scoring_label }} scores from every source. The likely lineup is the current suggestion on the Lineup page: the {{ view.lineup_size }} {{ "player" if view.lineup_size == 1 else "players" }} with the best {{ "score" if view.lineup_size == 1 else "scores" }} on each map.</p>
+
+<div class="sheet">
+{% call table("Practice coverage: best score of each player on each map") %}
+<thead>
+  <tr>
+    <th scope="col">Map</th>
+    {% for member in view.columns %}
+    <th scope="col" class="is-numeric">{{ member.username or ("osu! user " ~ member.osu_id) }}{% if member.is_substitute %} <span class="muted">(sub)</span>{% endif %}</th>
+    {% endfor %}
+    <th scope="col" class="is-numeric">With a score</th>
+  </tr>
+</thead>
+<tbody>
+  {% for row in view.rows %}
+  {% set m = row.pool_map %}
+  <tr>
+    <th scope="row">
+      {{ badge(m.slot) }} {{ map_name(m) }}
+      {% for flag in row.flags %}<span class="cell-sub flag">{{ icon("triangle-alert") }}<span>{{ flag }}</span></span>{% endfor %}
+    </th>
+    {% for cell in row.cells %}
+    <td class="is-numeric">
+      {% if cell.score %}<span class="num">{{ cell.score.score|fmt_score }}</span><span class="cell-sub muted">{{ cell.score.accuracy|fmt_acc }}{% if m.is_freemod or m.is_tiebreaker %} {{ cell.score.mods|mods }}{% endif %}</span>{% else %}<span class="muted" aria-label="No score">-</span>{% endif %}
+      {% if cell.in_likely_lineup %}<span class="cell-sub"><strong>Likely lineup</strong></span>{% endif %}
+      {% if cell.target %}<span class="cell-sub {{ 'result--win' if cell.target_met else 'result--loss' }}">{{ "Target met" if cell.target_met else "Target missed" }}</span>{% endif %}
+    </td>
+    {% endfor %}
+    <td class="is-numeric"><span class="num">{{ row.with_score }}</span> <span class="muted">of {{ view.columns|length }}</span></td>
+  </tr>
+  {% endfor %}
+</tbody>
+{% endcall %}
+</div>
+
+<section class="stack" aria-labelledby="targets-heading">
+  <h2 id="targets-heading">Practice targets</h2>
+  {% if targets %}
+  {% call table("Practice targets") %}
+  <thead>
+    <tr>
+      <th scope="col">Map</th>
+      <th scope="col">For</th>
+      <th scope="col">Target</th>
+      <th scope="col">Note</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for target in targets %}
+    {% for pool_map in pool if pool_map.id == target.pool_map_id %}
+    <tr>
+      <th scope="row">{{ badge(pool_map.slot) }} {{ map_name(pool_map) }}</th>
+      <td>{{ names.get(target.osu_id, "Former member") if target.osu_id else "Whole team" }}</td>
+      <td class="num">{{ target_text(target) }}</td>
+      <td>{{ target.note or "" }}</td>
+    </tr>
+    {% endfor %}
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  {% else %}
+  {{ empty_state("No targets are set for this stage." ~ (" A captain can set one below." if can_manage else "")) }}
+  {% endif %}
+
+  {% if can_manage %}
+  <form class="stack" method="post" action="/t/{{ tournament.id }}/practice-targets">
+    {{ csrf_field(csrf_token) }}
+    <input type="hidden" name="stage" value="{{ stage.id }}">
+    <div class="row row--top">
+      {{ field("pool_map_id", "Map", options=map_options, value=vals.pool_map_id|default(""), required=true, disabled=archived, error=form_error if ff == "pool_map_id" else none) }}
+      {{ field("osu_id", "For", options=player_options, value=vals.osu_id|default(""), required=true, disabled=archived, error=form_error if ff == "osu_id" else none) }}
+    </div>
+    <div class="row row--top">
+      {{ field("target_score", "Score", value=vals.target_score|default(""), inputmode="numeric", autocomplete="off", disabled=archived, error=form_error if ff == "target_score" else none) }}
+      {{ field("target_acc", "Accuracy", value=vals.target_acc|default(""), inputmode="decimal", autocomplete="off", disabled=archived, hint="For example 97.5", error=form_error if ff == "target_acc" else none) }}
+    </div>
+    {{ field("note", "Note", value=vals.note|default(""), maxlength="500", autocomplete="off", disabled=archived, error=form_error if ff == "note" else none) }}
+    <p class="muted">Setting a target again replaces the earlier one for that map and player. Leave score and accuracy empty to remove it.</p>
+    <div>{{ button("Save target", variant="primary", type="submit", disabled=archived) }}</div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

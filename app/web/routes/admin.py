@@ -27,7 +27,7 @@ from app.web.deps import get_clock, get_db, get_wybin, require_admin
 from app.web.errors import UserFacingError
 from app.web.session import flash, has_recent_login
 from app.web.templating import render
-from app.workers.jobs import JOB_LABELS, TRACK_SIGNUPS
+from app.workers.jobs import CONTINUOUS_JOBS, JOB_LABELS, SKIMMER_JOBS, TRACK_SIGNUPS
 from app.workers.scheduler import Scheduler
 
 router = APIRouter(prefix="/admin")
@@ -65,7 +65,10 @@ def _page(
         for entry in tournaments_repo.list_all(db, user.osu_id)
     ]
     jobs = []
+    scanner_on = request.app.state.settings.scanner_enabled
     for name, label in JOB_LABELS.items():
+        if name in SKIMMER_JOBS and not scanner_on:
+            continue
         state = jobs_repo.get(db, name)
         jobs.append(
             {
@@ -73,6 +76,7 @@ def _page(
                 "last_run_at": state.last_run_at if state else None,
                 "last_ok_at": state.last_ok_at if state else None,
                 "error": state.last_error if state else None,
+                "continuous": name in CONTINUOUS_JOBS,
             }
         )
     context = {

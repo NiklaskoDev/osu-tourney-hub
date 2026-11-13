@@ -37,3 +37,12 @@ def get(conn: sqlite3.Connection, name: str) -> JobState | None:
         (name,),
     ).fetchone()
     return JobState(**row) if row else None
+
+
+def set_cursor(conn: sqlite3.Connection, name: str, cursor: str) -> None:
+    """Remember where a job stopped. Creates the row when the job has not run yet."""
+    conn.execute(
+        "INSERT INTO job_state (name, cursor) VALUES (?, ?) "
+        "ON CONFLICT (name) DO UPDATE SET cursor = excluded.cursor",
+        (name, cursor),
+    )
