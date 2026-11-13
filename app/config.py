@@ -36,6 +36,8 @@ MAX_SCANNER_WORKERS = 8
 DEFAULT_SCANNER_WORKERS = 4
 DEFAULT_SCANNER_MAX_BACKLOG = 5000
 DEFAULT_SCANNER_OPEN_MAX_HOURS = 24
+AI_PROVIDERS = ("anthropic", "openai")  # "openai" = any OpenAI-compatible chat completions endpoint
+MAX_AI_MODEL_LENGTH = 100
 _TRUE_WORDS = frozenset({"true", "1", "yes", "on"})
 _FALSE_WORDS = frozenset({"false", "0", "no", "off"})
 
@@ -75,6 +77,27 @@ class Settings:
     scanner_workers: int = DEFAULT_SCANNER_WORKERS
     scanner_max_backlog: int = DEFAULT_SCANNER_MAX_BACKLOG
     scanner_open_max_hours: int = DEFAULT_SCANNER_OPEN_MAX_HOURS
+    ai_provider: str = ""
+    ai_api_key: str = field(default="", repr=False)
+    ai_model: str = ""
+    ai_base_url: str = ""
+
+    @property
+    def ai_missing(self) -> list[str]:
+        """Names of the AI variables still needed to switch AI predictions on, once a provider is
+        chosen. A local OpenAI-compatible endpoint (`AI_BASE_URL`) needs no key."""
+        if not self.ai_provider:
+            return []
+        missing = []
+        if not self.ai_model:
+            missing.append("AI_MODEL")
+        if not self.ai_api_key and not (self.ai_provider == "openai" and self.ai_base_url):
+            missing.append("AI_API_KEY")
+        return missing
+
+    @property
+    def ai_enabled(self) -> bool:
+        return bool(self.ai_provider) and not self.ai_missing
 
     @property
     def db_path(self) -> Path:
@@ -149,6 +172,7 @@ class Settings:
             invalid["LIVE_POLL_SECONDS"] = f"must be a number of at least {MIN_LIVE_POLL_SECONDS}"
 
         scanner = _scanner_settings(environ, osu_api_rate, invalid)
+        ai = _ai_settings(environ, invalid)
 
         if missing or invalid:
             raise ConfigError(missing, invalid)
@@ -167,6 +191,7 @@ class Settings:
             capture_refresh_hours=capture_hours,
             live_poll_seconds=live_poll,
             **scanner,
+            **ai,
         )
 
 
@@ -214,6 +239,44 @@ def _scanner_settings(
         "scanner_max_backlog": backlog,
         "scanner_open_max_hours": open_hours,
     }
+
+
+def _ai_settings(environ: Mapping[str, str], invalid: dict[str, str]) -> dict[str, Any]:
+    """The AI_* variables as `Settings` keyword arguments; problems are added to `invalid`.
+
+    A provider without a model or key is not an error: AI predictions just stay off (see
+    `Settings.ai_missing`)."""
+    provider = environ.get("AI_PROVIDER", "").strip().lower()
+    if provider and provider not in AI_PROVIDERS:
+        invalid["AI_PROVIDER"] = "must be empty or one of " + ", ".join(AI_PROVIDERS)
+    model = environ.get("AI_MODEL", "").strip()
+    if len(model) > MAX_AI_MODEL_LENGTH or any(c.isspace() or not c.isprintable() for c in model):
+        invalid["AI_MODEL"] = f"must be a model name of at most {MAX_AI_MODEL_LENGTH} characters"
+    base_url = environ.get("AI_BASE_URL", "").strip().rstrip("/")
+    if base_url and not _is_api_base_url(base_url):
+        invalid["AI_BASE_URL"] = "must look like https://host[:port][/path] without credentials"
+    return {
+        "ai_provider": provider,
+        "ai_api_key": environ.get("AI_API_KEY", "").strip(),
+        "ai_model": model,
+        "ai_base_url": base_url,
+    }
+
+
+def _is_api_base_url(url: str) -> bool:
+    try:
+        parts = urlsplit(url)
+        parts.port  # noqa: B018 - raises ValueError for a malformed port
+    except ValueError:
+        return False
+    return (
+        parts.scheme in ("http", "https")
+        and bool(parts.hostname)
+        and parts.username is None
+        and parts.password is None
+        and not parts.query
+        and not parts.fragment
+    )
 
 
 def _parse_bool(raw: str, default: bool) -> bool | None:

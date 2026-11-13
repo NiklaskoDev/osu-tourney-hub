@@ -429,12 +429,54 @@ class FakeSheets:
         return httpx.Response(200, text=sheet, headers={"Content-Type": self.content_type})
 
 
+AI_HOSTS = ("api.anthropic.com", "api.openai.com", "localhost")
+
+
+def anthropic_reply(answer: object) -> httpx.Response:
+    """What the Messages API answers when the forced tool was called with `answer`."""
+    block = {"type": "tool_use", "id": "toolu_1", "name": "submit_estimate", "input": answer}
+    return httpx.Response(200, json={"type": "message", "content": [block]})
+
+
+def openai_reply(answer: object) -> httpx.Response:
+    """What a chat completions endpoint answers when the model replied with `answer` as JSON."""
+    message = {"role": "assistant", "content": json.dumps(answer)}
+    return httpx.Response(200, json={"choices": [{"index": 0, "message": message}]})
+
+
+class FakeAi:
+    """Stands in for the AI providers. Queue replies with `replies` (an `httpx.Response`, or a
+    callable taking the request); with none left it answers 500. No real network."""
+
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+        self.replies: list = []
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        if not self.replies:
+            return httpx.Response(500, text="no reply queued")
+        reply = self.replies.pop(0)
+        return reply(request) if callable(reply) else reply
+
+    def bodies(self) -> list[dict]:
+        return [json.loads(request.content) for request in self.requests]
+
+
 class NoRealNetwork:
     """Routes each request to the fake of its host. Any other host fails the test: tests never
     reach the internet."""
 
-    def __init__(self, osu: FakeOsu, wybin: FakeWybin, sheets: FakeSheets | None = None) -> None:
+    def __init__(
+        self,
+        osu: FakeOsu,
+        wybin: FakeWybin,
+        sheets: FakeSheets | None = None,
+        ai: FakeAi | None = None,
+    ) -> None:
         self._hosts = {"osu.ppy.sh": osu._handle, "wybin.xyz": wybin.handle}
+        if ai is not None:
+            self._hosts.update({host: ai.handle for host in AI_HOSTS})
         if sheets is not None:
             self._hosts["docs.google.com"] = sheets.handle
             self._hosts[DOWNLOAD_HOST] = sheets.handle

@@ -1,4 +1,5 @@
-"""Admin console: wybin account link, import, manual tournaments, archive, hide, sync, delete."""
+"""Admin console: wybin account link, import, manual tournaments, archive, hide, sync, delete, AI
+status."""
 
 import sqlite3
 from typing import Any
@@ -6,15 +7,18 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
+from app.clients.ai import AiProvider
 from app.clients.wybin import InvalidWybinLink, WybinClient
 from app.clients.wybin_models import WybinError, WybinFormatError, WybinNotFound
 from app.clock import Clock
+from app.config import Settings
 from app.domain.models import Tournament, User
 from app.domain.modes import GAME_MODES, mode_name
 from app.domain.parsing import parse_uint
 from app.repos import jobs as jobs_repo
 from app.repos import tournaments as tournaments_repo
 from app.repos import wybin_links as links_repo
+from app.services import ai_prediction
 from app.services import archive as archive_service
 from app.services.archive import ArchiveError
 from app.services.tournament_setup import SetupError, TournamentForm, create_manual
@@ -23,7 +27,7 @@ from app.services.wybin_sync import (
     import_tournament,
     sync_tournament,
 )
-from app.web.deps import get_clock, get_db, get_wybin, require_admin
+from app.web.deps import get_ai, get_clock, get_db, get_wybin, require_admin
 from app.web.errors import UserFacingError
 from app.web.session import flash, has_recent_login
 from app.web.templating import render
@@ -85,9 +89,21 @@ def _page(
         "jobs": jobs,
         "link": links_repo.get(db, user.osu_id),
         "mode_options": [(str(code), name) for code, name in GAME_MODES.items()],
+        "ai": _ai_info(request.app.state.settings),
+        "ai_share_usernames": ai_prediction.share_usernames(db),
         **extra,
     }
     return render(request, "pages/admin/index.html", context, status_code=status_code)
+
+
+def _ai_info(settings: Settings) -> dict:
+    """What the page may know of the AI setup. Never the whole settings: they hold the API key."""
+    return {
+        "enabled": settings.ai_enabled,
+        "provider": settings.ai_provider,
+        "model": settings.ai_model,
+        "missing": settings.ai_missing,
+    }
 
 
 def _tournament(db: sqlite3.Connection, tid: int) -> Tournament:
@@ -152,6 +168,23 @@ async def unlink_wybin_account(
 ) -> Response:
     links_repo.remove(db, user.osu_id)
     flash(request, "success", "wybin account unlinked. Tournaments already imported stay.")
+    return RedirectResponse("/admin", status_code=303)
+
+
+@router.post("/ai-settings")
+async def save_ai_settings(
+    request: Request,
+    share_usernames: str = Form(""),
+    _admin: User = Depends(require_admin),
+    db: sqlite3.Connection = Depends(get_db),
+    ai: AiProvider = Depends(get_ai),
+) -> Response:
+    """Whether usernames and team names may be sent to the AI provider (off by default). Like the
+    rest of the AI feature it does not exist while the provider is off."""
+    if not ai.enabled:
+        raise UserFacingError(404, "AI predictions are off.")
+    ai_prediction.set_share_usernames(db, bool(share_usernames))
+    flash(request, "success", "AI setting saved.")
     return RedirectResponse("/admin", status_code=303)
 
 

@@ -52,6 +52,7 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - Opponent page (`/t/{tid}/opponents/{team_id}`): a team's picks and bans per mod bracket and per round, how often it picked first, and maps it never picked.
 - Predictions now lean on both teams' earlier picks and bans (`HABIT_WEIGHT` 0.3). Saved predictions carry model version `stat-2`.
 - Live match mode (`/t/<id>/live/<match>`, linked from the match page): while a match is played its lobby is read every `LIVE_POLL_SECONDS` (new setting, default 10, minimum 5) at the highest osu! priority, and the page updates by itself over a server-sent event stream: running score, maps played with the winner and scores, protects and bans, the map being played, and the model's next pick with the series chance from the current score. Captains start and stop it; it also starts by itself 30 minutes before a match of our team that has a lobby, and ends when the lobby closes or after four hours. A new job `live_follow` shows on the Admin page. Live updates run in one process, so keep a single uvicorn worker (README).
+- Optional AI estimate of a match (off by default): set `AI_PROVIDER` (`anthropic`, or `openai` for any OpenAI-compatible endpoint such as OpenAI, OpenRouter or a local server), `AI_MODEL` and `AI_API_KEY` (not needed for a local endpoint with `AI_BASE_URL`). A captain asks on the match page; the expected winner and chance, bans, picks and a short reasoning are stored and shown as "AI estimate" next to the statistical prediction. A reply that does not match the expected structure is dropped and nothing is saved; five asks an hour per person (an ask refused for having nothing to estimate does not count; a provider's "too many requests" is not retried). The Admin page shows "AI predictions: off" or on. Only pool, score and model data is sent, and usernames and team names are replaced by "Player A" and "Team A" unless an administrator ticks the new "Send osu! usernames and team names" setting there.
 
 ### Changed
 - Archiving a hidden tournament is refused until it is restored, mirroring hiding an archived one.
@@ -71,4 +72,5 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 
 ### Security
 - State-changing requests larger than 2 MB, with an unreadable `Content-Length`, or without a `Content-Length` (chunked) are refused before their body is read.
+- The AI provider key is only sent as a request header and is never logged, shown or stored in the database; a failed AI call logs a short reason such as `HTTP 401`, never the reply, the address or the key.
 - CSRF token on every state-changing request, a per-IP limit of 20 requests a minute on the login routes, and session cookies that are HttpOnly, Secure (on https) and SameSite=Lax.

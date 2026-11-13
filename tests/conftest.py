@@ -17,6 +17,7 @@ from app.db.connection import open_db
 from app.main import create_app
 from tests.support import (
     ADMIN_ID,
+    FakeAi,
     FakeOsu,
     FakeSheets,
     FakeWybin,
@@ -75,6 +76,11 @@ def sheets() -> FakeSheets:
 
 
 @pytest.fixture
+def ai() -> FakeAi:
+    return FakeAi()
+
+
+@pytest.fixture
 def scan_client(settings, clock, osu) -> OsuClient:
     """An osu! client on the fake osu! with no rate limit and no waiting, for service tests."""
 
@@ -99,8 +105,8 @@ def osu_delays() -> list[float]:
 
 
 @pytest.fixture
-def app(settings, clock, osu, wybin, sheets, osu_delays) -> FastAPI:
-    network = NoRealNetwork(osu, wybin, sheets)
+def app(settings, clock, osu, wybin, sheets, ai, osu_delays) -> FastAPI:
+    network = NoRealNetwork(osu, wybin, sheets, ai)
     built = create_app(settings, clock, http_transport=network.transport, start_workers=False)
     add_test_login(built)
 

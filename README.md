@@ -160,6 +160,24 @@ of the likely lineup (the current suggestion), flags maps where nobody in it, or
 size, has a score, and shows captains' practice targets (a score and/or accuracy for the team or one
 player) as met or missed.
 
+## Optional AI estimate
+
+With `AI_PROVIDER`, `AI_MODEL` and (for a hosted provider) `AI_API_KEY` set, a captain can press
+"Ask the AI for an estimate" on a match page. The answer (expected winner and chance, bans, picks and
+a short reasoning) is stored and shown under "AI estimate", next to the statistical prediction, which
+stays the default. A captain can ask five times an hour. Providers are `anthropic` (Messages API) and
+`openai` (chat completions at `AI_BASE_URL`, so OpenAI, OpenRouter or a local server), called with
+plain HTTP requests; no SDK is installed. A reply that does not match the expected structure is
+dropped and nothing is saved.
+
+What is sent: the stage format, the pool slots with star rating and mods, each team's expected score
+per map, each player's best scores, the statistical model's output and the teams' pick and ban
+habits. Not sent: osu! ids, map titles, notes or availability. Usernames and team names are replaced
+by "Player A", "Player B" and "Team A", "Team B" unless an administrator ticks "Send osu! usernames
+and team names to the provider" on the Admin page. The API key stays in the environment: it is sent
+only as a request header and is never logged or shown. The Admin page shows "AI predictions: off"
+while the setup is incomplete.
+
 ## Configuration
 
 All settings are environment variables. `.env.example` lists them with comments.
@@ -182,20 +200,20 @@ All settings are environment variables. `.env.example` lists them with comments.
 | `SCANNER_OPEN_MAX_HOURS` | 24 | open lobbies are finalised after this |
 | `CAPTURE_REFRESH_HOURS` | 24 | minimum hours before a player's map score is fetched again, at least 1 |
 | `LIVE_POLL_SECONDS` | 10 | seconds between two reads of a followed lobby in live match mode, minimum 5 |
-| `AI_PROVIDER` | empty (off) | optional AI predictions |
-| `AI_API_KEY` | empty, secret | not needed for a local endpoint |
-| `AI_MODEL` | empty | required when a provider is set |
-| `AI_BASE_URL` | empty | only for an OpenAI-compatible or local endpoint |
+| `AI_PROVIDER` | empty (off) | `anthropic` or `openai` (any OpenAI-compatible endpoint); empty keeps AI predictions off |
+| `AI_API_KEY` | empty, secret | not needed for an `openai` provider with its own `AI_BASE_URL` (a local server) |
+| `AI_MODEL` | empty | the model name, for example `claude-sonnet-5-5`; AI stays off without it |
+| `AI_BASE_URL` | empty | address of an OpenAI-compatible or local endpoint, for example `http://host:11434/v1` |
 | `LOG_LEVEL` | info | debug, info, warning, error, critical |
 | `DATA_DIR` | `/data` | set by the image; change only outside Docker |
 
 Read by this version: the five required variables, `OSU_API_RATE_PER_MIN`, `WYBIN_POLL_MINUTES`,
 `WYBIN_MIN_INTERVAL_SECONDS`, the five `SCANNER_*` variables, `CAPTURE_REFRESH_HOURS`,
-`LIVE_POLL_SECONDS`, `LOG_LEVEL`, `DATA_DIR` (and `PUID`/`PGID` by the container start-up script). `SCANNER_BUDGET_PER_MIN` must be lower
+`LIVE_POLL_SECONDS`, the four `AI_*` variables, `LOG_LEVEL`, `DATA_DIR` (and `PUID`/`PGID` by the container start-up script). `SCANNER_BUDGET_PER_MIN` must be lower
 than `OSU_API_RATE_PER_MIN` while the scanner is enabled, or the app does not start; when it is not set
-it is 30, or one less than `OSU_API_RATE_PER_MIN` if that is 30 or lower. The
-`AI_*` variables are not read yet; they only take effect in the versions that add the matching feature,
-and setting them now changes nothing.
+it is 30, or one less than `OSU_API_RATE_PER_MIN` if that is 30 or lower. A wrong `AI_PROVIDER`,
+`AI_MODEL` or `AI_BASE_URL` also stops the start; a provider without a model or key does not, it
+just keeps AI predictions off (the log names the missing variable).
 
 ## Local development
 

@@ -90,6 +90,77 @@
 </form>
 {% endif %}
 
+{% if ai_estimate or can_ask_ai %}
+<section class="stack" aria-labelledby="ai-heading">
+  <h2 id="ai-heading">AI estimate</h2>
+  {% if ai_error %}
+  {% call alert("error", "No AI estimate saved") %}{{ ai_error }}{% endcall %}
+  {% endif %}
+  {% if ai_estimate %}
+  {% set est = ai_estimate %}
+  <dl class="facts">
+    <div>
+      <dt>Chance for {{ view.left.name }}</dt>
+      <dd>{{ outcome(est.left_chance) }}</dd>
+    </div>
+    <div>
+      <dt>Expected winner</dt>
+      <dd>{{ est.winner_name }} <span class="num">{{ "%.0f"|format(est.win_percent) }}%</span></dd>
+    </div>
+    <div>
+      <dt>Asked</dt>
+      <dd>{{ local_time(est.created_at) }} <span class="muted mono">{{ est.model }}</span></dd>
+    </div>
+  </dl>
+  <div class="split">
+    <section class="stack" aria-labelledby="ai-bans-heading">
+      <h3 id="ai-bans-heading">Bans</h3>
+      {% call table("Bans the AI expects from both teams") %}
+      <thead>
+        <tr><th scope="col">Team</th><th scope="col">Bans</th></tr>
+      </thead>
+      <tbody>
+        {% for team, slots in est.bans %}
+        <tr>
+          <th scope="row">{{ team }}</th>
+          <td>{% if slots %}{% for slot in slots %}{{ badge(slot) }}{% if not loop.last %} {% endif %}{% endfor %}{% else %}<span class="muted">-</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% endcall %}
+    </section>
+    <section class="stack" aria-labelledby="ai-picks-heading">
+      <h3 id="ai-picks-heading">Picks in order</h3>
+      {% if est.picks %}
+      {% call table("Picks the AI expects, in order") %}
+      <thead>
+        <tr><th scope="col">Pick</th><th scope="col">Team</th><th scope="col">Map</th></tr>
+      </thead>
+      <tbody>
+        {% for team, slot in est.picks %}
+        <tr><th scope="row">{{ loop.index }}</th><td>{{ team }}</td><td>{{ badge(slot) }}</td></tr>
+        {% endfor %}
+      </tbody>
+      {% endcall %}
+      {% else %}
+      <p class="muted">The AI named no picks.</p>
+      {% endif %}
+    </section>
+  </div>
+  <p>{{ est.reasoning }}</p>
+  <p class="muted">Written by an AI model from the same scores and the statistical estimate above. Nobody checks it, so treat it as a second opinion.</p>
+  {% else %}
+  {{ empty_state("No AI estimate for this match yet.") }}
+  {% endif %}
+  {% if can_ask_ai %}
+  <form method="post" action="/t/{{ tournament.id }}/matches/{{ match.id }}/predict-ai">
+    {{ csrf_field(csrf_token) }}
+    <div>{{ button("Ask the AI again" if ai_estimate else "Ask the AI for an estimate", variant="secondary", type="submit") }}</div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="stack" aria-labelledby="compare-heading">
   <h2 id="compare-heading">Map by map</h2>
   {% call table("Expected score of both teams on each map") %}

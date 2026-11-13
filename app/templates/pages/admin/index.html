@@ -140,6 +140,21 @@
     <div>{{ button("Scanner status", variant="secondary", href="/admin/scanner") }}</div>
   </section>
 
+  <section class="stack" aria-labelledby="ai-heading">
+    <h2 id="ai-heading">AI predictions</h2>
+    {% if ai.enabled %}
+    <p><strong>AI predictions: on.</strong> Provider <span class="mono">{{ ai.provider }}</span>, model <span class="mono">{{ ai.model }}</span>. Captains can ask for an estimate on a match page, five times an hour each.</p>
+    <form class="stack" method="post" action="/admin/ai-settings">
+      {{ csrf_field(csrf_token) }}
+      {{ checkbox("share_usernames", "Send osu! usernames and team names to the provider", checked=ai_share_usernames) }}
+      <p class="muted">Off by default: players are then sent as Player A, Player B and so on, and the teams as Team A and Team B.</p>
+      <div>{{ button("Save", variant="secondary", type="submit") }}</div>
+    </form>
+    {% else %}
+    <p><strong>AI predictions: off.</strong>{% if ai.missing %} Set {{ ai.missing|join(" and ") }} to switch them on.{% else %} Set AI_PROVIDER, AI_MODEL and AI_API_KEY to switch them on.{% endif %}</p>
+    {% endif %}
+  </section>
+
   <section class="stack" aria-labelledby="jobs-heading">
     <h2 id="jobs-heading">Background jobs</h2>
     {% call table("Background jobs") %}

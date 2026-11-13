@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
+from app.clients.ai import build_provider
 from app.clients.http import make_http_client
 from app.clients.osu import OsuClient
 from app.clients.ratelimit import RateLimiter
@@ -68,6 +69,7 @@ AUTH_WINDOW = timedelta(minutes=1)
 REFRESH_WINDOW = timedelta(minutes=10)  # "Refresh my scores": once per person
 OPPONENT_CAPTURE_WINDOW = timedelta(hours=1)  # once per team
 IMPORT_LIMIT_PER_HOUR = 10
+AI_LIMIT_PER_HOUR = 5  # AI estimates a person may ask for; each one costs money
 LOBBY_LINK_LIMIT_PER_HOUR = 20  # lobby links a person may add; each one costs an osu! request
 
 
@@ -88,6 +90,9 @@ def create_app(
         access_log.addFilter(RedactFeedTokens())
     http = make_http_client(http_transport)
     wybin = WybinClient(http, settings.wybin_min_interval_seconds)
+    if settings.ai_missing:
+        logger.warning("AI predictions are off: set %s", " and ".join(settings.ai_missing))
+    ai = build_provider(settings, http)
     osu = OsuClient(
         settings,
         http,
@@ -138,6 +143,7 @@ def create_app(
     app.state.skimmer = skimmer
     app.state.live = live_follower
     app.state.wybin = wybin
+    app.state.ai = ai
     app.state.scheduler = scheduler
     app.state.auth_limiter = SlidingWindowLimiter(AUTH_LIMIT_PER_MINUTE, AUTH_WINDOW, clock)
     app.state.refresh_limiter = SlidingWindowLimiter(1, REFRESH_WINDOW, clock)
@@ -145,6 +151,7 @@ def create_app(
     app.state.lobby_link_limiter = SlidingWindowLimiter(
         LOBBY_LINK_LIMIT_PER_HOUR, timedelta(hours=1), clock
     )
+    app.state.ai_limiter = SlidingWindowLimiter(AI_LIMIT_PER_HOUR, timedelta(hours=1), clock)
     app.state.import_limiter = SlidingWindowLimiter(
         IMPORT_LIMIT_PER_HOUR, timedelta(hours=1), clock
     )

@@ -23,6 +23,7 @@ from app.repos.predictions import PlanItem
 from app.services import history, lineup, prediction, sheet
 from app.services.prediction import Expectation, MatchPrediction, SeedEstimate, SeriesResult
 from app.services.schedule import UNKNOWN_TEAM, teams_by_id
+from app.services.sheet import BestKey, BestScore
 from app.services.tournament_settings import effective_lineup_size
 
 NO_TEAMS = "One or both teams of this match are not decided yet, so there is nothing to compare."
@@ -39,6 +40,8 @@ class StageModel:
     stage: Stage
     pool: list[PoolMap]
     expectations: dict[int, dict[int, Expectation | None]]  # team id -> pool map id -> expectation
+    rosters: dict[int, list[int]]  # team id -> the osu! ids that may play
+    best: dict[BestKey, BestScore]  # (osu id, pool map id) -> that player's best score
 
 
 @dataclass(frozen=True)
@@ -122,7 +125,7 @@ def load_model(
         team_id: prediction.team_expectations(pool, best, roster, size)
         for team_id, roster in rosters.items()
     }
-    return StageModel(stage, pool, expectations)
+    return StageModel(stage, pool, expectations, rosters, best)
 
 
 def _roster(

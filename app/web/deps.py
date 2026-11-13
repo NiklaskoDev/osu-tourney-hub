@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 from fastapi import Depends, Request
 
+from app.clients.ai import AiProvider
 from app.clients.osu import OsuClient
 from app.clients.wybin import WybinClient
 from app.clock import Clock
@@ -46,6 +47,10 @@ def get_osu(request: Request) -> OsuClient:
 
 def get_wybin(request: Request) -> WybinClient:
     return request.app.state.wybin
+
+
+def get_ai(request: Request) -> AiProvider:
+    return request.app.state.ai
 
 
 def get_http(request: Request) -> httpx.AsyncClient:
