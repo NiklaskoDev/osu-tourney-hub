@@ -63,7 +63,7 @@ jobs:
       # ---------- Go ----------
       - name: Set up Go
         if: hashFiles('go.mod') != ''
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Go - vet, test, build
