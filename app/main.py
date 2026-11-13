@@ -40,6 +40,7 @@ from app.web.routes import (
 )
 from app.web.security import (
     AUTH_LIMIT_PER_MINUTE,
+    RequestBodyLimitMiddleware,
     SecurityHeadersMiddleware,
     SlidingWindowLimiter,
     require_csrf,
@@ -114,7 +115,9 @@ def create_app(
     app.state.import_limiter = SlidingWindowLimiter(
         IMPORT_LIMIT_PER_HOUR, timedelta(hours=1), clock
     )
-    # Added last = outermost, so the security headers also cover session and error responses.
+    # Added last = outermost, so the security headers also cover session and error responses. The
+    # body limit goes first (innermost of the three): it needs the session to render its error page.
+    app.add_middleware(RequestBodyLimitMiddleware)
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.session_secret,

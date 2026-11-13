@@ -26,6 +26,7 @@ HAND_ENTERED = ("manual", "import")
 OSU_LINK_PREFIX = "https://osu.ppy.sh/"
 FROM_ANOTHER_TOURNAMENT = "from another tournament"
 OTHER_SCORING = "Other scoring type"
+LAZER_STAND_IN = "lazer score"
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ class Viewer:
 class Cell:
     score: Score | None
     old: bool
+    lazer: bool = False  # a lazer score counted on a ScoreV2 tournament
 
 
 @dataclass(frozen=True)
@@ -74,6 +76,7 @@ class ScoreLine:
     player: str
     status: str  # "Best", "Counts", or why it does not count
     old: bool
+    lazer: bool
     source: str
     link: str | None
     hint: str | None
@@ -168,7 +171,7 @@ def build_pool_view(
         )
         for pool_map in data.pool
     ]
-    rows = [_map_row(pool_map, data, ids, now) for pool_map in data.pool]
+    rows = [_map_row(pool_map, data, ids, tournament, now) for pool_map in data.pool]
     return PoolView(data.players, rows, _average_rows(data, ids), details)
 
 
@@ -187,12 +190,18 @@ def _note_lines(notes: list[Note], names: dict[int, str], viewer: Viewer) -> lis
     ]
 
 
-def _map_row(pool_map: PoolMap, data: StageData, ids: list[int], now: datetime) -> MapRow:
+def _map_row(
+    pool_map: PoolMap, data: StageData, ids: list[int], tournament: Tournament, now: datetime
+) -> MapRow:
     cells = []
     for osu_id in ids:
         found = data.best.get((osu_id, pool_map.id))
+        if found is None:
+            cells.append(Cell(None, False))
+            continue
+        best = found.overall
         cells.append(
-            Cell(found.overall, sheet.is_old(found.overall, now)) if found else Cell(None, False)
+            Cell(best, sheet.is_old(best, now), sheet.is_stand_in(best, tournament.scoring))
         )
     team_score, team_accuracy, count = sheet.map_average(pool_map, data.best, ids)
     return MapRow(pool_map, cells, team_score, team_accuracy, count)
@@ -230,6 +239,7 @@ def _score_lines(
             player=names.get(score.osu_id, f"osu! user {score.osu_id}"),
             status=_status(pool_map, score, data, tournament),
             old=sheet.is_old(score, now),
+            lazer=sheet.is_stand_in(score, tournament.scoring),
             source=SOURCE_LABELS.get(score.source, score.source),
             link=_safe_link(score.source_url),
             hint=_origin_hint(score, tournament, viewer),
@@ -247,7 +257,10 @@ def _status(pool_map: PoolMap, score: Score, data: StageData, tournament: Tourna
     if reason:
         return reason
     found = data.best.get((score.osu_id, pool_map.id))
-    return "Best" if found and found.overall.id == score.id else "Counts"
+    status = "Best" if found and found.overall.id == score.id else "Counts"
+    return (
+        f"{status} ({LAZER_STAND_IN})" if sheet.is_stand_in(score, tournament.scoring) else status
+    )
 
 
 def _safe_link(url: str | None) -> str | None:

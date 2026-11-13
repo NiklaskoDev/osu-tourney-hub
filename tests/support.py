@@ -10,6 +10,7 @@ import httpx
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import PlainTextResponse
 
+from app.clients.osu import SCORE_API_VERSION
 from app.clock import Clock, to_utc_iso
 from app.domain.models import OsuProfile
 from app.repos import users as users_repo
@@ -21,6 +22,7 @@ ADMIN_ID = 1001  # first id in ADMIN_OSU_IDS of the test settings
 USER_TOKEN_PREFIX = "user-token-"
 APP_TOKEN = "app-token"
 CODE_PREFIX = "code-"
+DOWNLOAD_HOST = "doc-0s-6g-sheets.googleusercontent.com"  # where Google redirects a CSV export
 
 
 def code_for(osu_id: int) -> str:
@@ -79,6 +81,8 @@ class FakeOsu:
             "passed": True,
             "total_score": 850_000,
             "legacy_total_score": 1_200_000,
+            "classic_total_score": 1_100_000,
+            "legacy_score_id": None,
             "accuracy": 0.9876,
             "max_combo": 512,
             "mods": [],
@@ -143,7 +147,11 @@ class FakeOsu:
         # /api/v2/beatmaps/{beatmap}/scores/users/{user}/all
         _, _, beatmap, _, _, user, _ = path.removeprefix("/api/v2").split("/")
         scores = self.api_scores.get((int(beatmap), int(user)))
-        return httpx.Response(200, json={"scores": scores}) if scores else httpx.Response(404)
+        if not scores:
+            return httpx.Response(404)
+        if int(request.headers.get("x-api-version", "0")) < int(SCORE_API_VERSION):
+            scores = [_legacy_shape(score) for score in scores]
+        return httpx.Response(200, json={"scores": scores})
 
     def _user(self, request: httpx.Request, raw_id: str) -> httpx.Response:
         if self.reject_lookups > 0:
@@ -153,6 +161,15 @@ class FakeOsu:
             return httpx.Response(401)
         profile = self.profiles.get(int(raw_id))
         return httpx.Response(200, json=profile) if profile else httpx.Response(404)
+
+
+def _legacy_shape(score: dict) -> dict:
+    """What osu-web sends when `x-api-version` is missing: V1 `score`, no lazer totals."""
+    dropped = ("total_score", "legacy_total_score", "classic_total_score", "ended_at")
+    legacy = {key: value for key, value in score.items() if key not in dropped}
+    legacy["score"] = score.get("legacy_total_score", 0)
+    legacy["created_at"] = score.get("ended_at")
+    return legacy
 
 
 def load_fixture(name: str) -> dict:
@@ -223,6 +240,7 @@ class FakeSheets:
         self.content_type = "text/csv; charset=utf-8"
         self.redirect_to: str | None = None  # every request is redirected there
         self.redirect_once_to: str | None = None  # only the next request is
+        self.download: str | None = None  # what Google's signed download host answers
         self.transport = httpx.MockTransport(self.handle)
 
     def paths(self) -> list[str]:
@@ -230,6 +248,10 @@ class FakeSheets:
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
+        if request.url.host.endswith("-sheets.googleusercontent.com") and self.download is not None:
+            return httpx.Response(
+                200, text=self.download, headers={"Content-Type": self.content_type}
+            )
         if self.redirect_once_to is not None:
             target, self.redirect_once_to = self.redirect_once_to, None
             return httpx.Response(307, headers={"Location": target})
@@ -252,6 +274,7 @@ class NoRealNetwork:
         self._hosts = {"osu.ppy.sh": osu._handle, "wybin.xyz": wybin.handle}
         if sheets is not None:
             self._hosts["docs.google.com"] = sheets.handle
+            self._hosts[DOWNLOAD_HOST] = sheets.handle
         self.transport = httpx.MockTransport(self._route)
 
     def _route(self, request: httpx.Request) -> httpx.Response:

@@ -34,6 +34,8 @@ TOKEN_URL = f"{SITE}/oauth/token"
 CALLBACK_PATH = "/auth/callback"
 LOGIN_SCOPE = "identify"
 MAX_ATTEMPTS = 5
+# Without this header osu! answers in the pre-2022 format: no `total_score`, no `ended_at`.
+SCORE_API_VERSION = "20220705"
 TOKEN_EXPIRY_MARGIN_S = 60
 MAX_USERNAME_LENGTH = 64
 MAX_METADATA_LENGTH = 200
@@ -154,27 +156,48 @@ class OsuClient:
         """Every passed score of one player on one beatmap, one per mod combination they played.
 
         osu! only keeps scores for ranked and loved maps; for any other map or a hidden user it
-        answers 404, which is an empty list here, not an error.
+        answers 404, which is an empty list here, not an error. The request names an API version
+        because osu! otherwise answers in the legacy score format, which `_parse_api_score`
+        rejects.
         """
         url = f"{API_BASE}/beatmaps/{beatmap_id}/scores/users/{osu_id}/all"
         try:
-            data = await self._app_get(url, priority, {"mode": API_MODE_NAMES[gamemode]})
+            data = await self._app_get(
+                url,
+                priority,
+                {"mode": API_MODE_NAMES[gamemode]},
+                headers={"x-api-version": SCORE_API_VERSION},
+            )
         except OsuNotFound:
             return []
         return _parse_api_scores(data, beatmap_id, osu_id, gamemode)
 
     async def _app_get(
-        self, url: str, priority: Priority, params: dict[str, str] | None = None
+        self,
+        url: str,
+        priority: Priority,
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """GET with the app's own token; a rejected token is replaced once and the call retried."""
         try:
             return await self._request(
-                "GET", url, bearer=await self.client_token(), params=params, priority=priority
+                "GET",
+                url,
+                bearer=await self.client_token(),
+                params=params,
+                headers=headers,
+                priority=priority,
             )
         except OsuAuthError:
             self._token = None  # revoked or expired early: fetch a new token once and retry
             return await self._request(
-                "GET", url, bearer=await self.client_token(), params=params, priority=priority
+                "GET",
+                url,
+                bearer=await self.client_token(),
+                params=params,
+                headers=headers,
+                priority=priority,
             )
 
     async def client_token(self) -> str:
@@ -212,9 +235,12 @@ class OsuClient:
         bearer: str | None = None,
         params: dict[str, str] | None = None,
         form: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
         priority: Priority = Priority.INTERACTIVE,
     ) -> dict[str, Any]:
-        headers = {"Authorization": f"Bearer {bearer}"} if bearer else {}
+        headers = dict(headers or {})
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer}"  # always wins over a caller's header
         path = urlsplit(url).path
         for attempt in range(MAX_ATTEMPTS):
             await self._limiter.acquire(priority)

@@ -6,6 +6,7 @@ import pytest
 from app.clients.http import USER_AGENT, make_http_client
 from app.clients.osu import (
     MAX_ATTEMPTS,
+    SCORE_API_VERSION,
     OsuAuthError,
     OsuClient,
     OsuNotFound,
@@ -428,7 +429,44 @@ async def test_the_mode_is_sent_by_its_api_name_and_mods_follow_the_mode(osu_cli
 
 
 async def test_a_map_osu_has_no_scores_for_gives_an_empty_list(osu_client, osu):
-    assert await osu_client.get_user_beatmap_scores(7777, 2002, 0) == []  # the API answers 404
+    scores_path = "/api/v2/beatmaps/7777/scores/users/2002/all"
+    await osu_client.client_token()  # so the planned 404 hits the score call, not the token call
+    osu.failures.append(404)
+
+    assert await osu_client.get_user_beatmap_scores(7777, 2002, 0) == []
+
+    assert [r.url.path for r in osu.requests].count(scores_path) == 1  # a 404 is not retried
+
+
+async def test_the_score_request_names_the_api_version(osu_client, osu):
+    osu.add_api_score(1001, 2002, 9001)
+
+    await osu_client.get_user_beatmap_scores(1001, 2002, 0)
+
+    assert osu.requests[-1].headers["x-api-version"] == SCORE_API_VERSION == "20220705"
+    assert osu.requests[-1].headers["Authorization"] == f"Bearer {APP_TOKEN}"
+
+
+async def test_other_requests_do_not_send_an_api_version(osu_client, osu, known_user):
+    await osu_client.get_user(known_user)
+
+    assert "x-api-version" not in osu.requests[-1].headers
+
+
+async def test_without_the_version_header_osu_answers_in_the_legacy_shape(osu):
+    """Pins the fake to osu-web: it is the reason the header matters."""
+    osu.add_api_score(1001, 2002, 9001, legacy_total_score=1_200_000)
+    url = "https://osu.ppy.sh/api/v2/beatmaps/1001/scores/users/2002/all"
+    auth = {"Authorization": f"Bearer {APP_TOKEN}"}
+
+    async with make_http_client(osu.transport) as http:
+        old = (await http.get(url, headers=auth)).json()["scores"][0]
+        new = (await http.get(url, headers={**auth, "x-api-version": "20220705"})).json()["scores"][
+            0
+        ]
+
+    assert old["score"] == 1_200_000 and "total_score" not in old and "ended_at" not in old
+    assert new["total_score"] == 850_000 and "score" not in new
 
 
 async def test_score_requests_use_the_capture_priority_unless_told_otherwise(

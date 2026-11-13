@@ -39,11 +39,11 @@ def build_jobs(settings: Settings, clock: Clock, wybin: WybinClient, osu: OsuCli
 
     async def sync() -> None:
         with closing(open_db(settings.db_path)) as conn:
-            try:
-                await sync_active(conn, wybin, clock)
-            finally:
-                # Maps the sync added are pulled soon; pairs pulled recently are skipped.
-                enqueue_active(conn, clock, settings.capture_refresh_hours)
+            await sync_active(conn, wybin, clock)
+            # Maps the sync added are pulled soon; pairs pulled recently are skipped. After a
+            # failed sync the hourly enqueue job queues whatever the sync managed to add, so the
+            # sync's own error is the one that gets recorded.
+            enqueue_active(conn, clock, settings.capture_refresh_hours)
 
     async def enqueue() -> None:
         with closing(open_db(settings.db_path)) as conn:

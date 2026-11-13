@@ -6,6 +6,7 @@ from datetime import timedelta
 import pytest
 
 from app.repos import jobs as jobs_repo
+from app.services.wybin_sync import WybinSyncError
 from app.workers.jobs import CAPTURE_DRAIN, CAPTURE_ENQUEUE, SYNC_ACTIVE, build_jobs
 from app.workers.scheduler import OSU_ERROR_TEXT, Scheduler
 from tests.support import (
@@ -298,6 +299,26 @@ def test_a_wybin_sync_queues_the_pulls_for_maps_it_brought_in(
     assert pool and {(LATE_MEMBER, beatmap) for beatmap in pool} <= pulls
 
 
+def test_a_failed_wybin_sync_records_its_own_error_and_queues_nothing(
+    client, db, app, settings, clock, cup, monkeypatch
+):
+    async def failing_sync(conn, wybin, clock):
+        raise WybinSyncError("wybin could not be read for 1 of 1 tournaments.")
+
+    monkeypatch.setattr("app.workers.jobs.sync_active", failing_sync)
+    jobs = jobs_by_name(app, settings, clock)
+    scheduler = Scheduler(settings.db_path, clock, list(jobs.values()))
+    assert db.execute("SELECT COUNT(*) FROM capture_queue").fetchone()[0] == 0
+
+    assert run(scheduler.run_once(jobs[SYNC_ACTIVE])) is False
+
+    assert (
+        jobs_repo.get(db, SYNC_ACTIVE).last_error
+        == "wybin could not be read for 1 of 1 tournaments."
+    )
+    assert db.execute("SELECT COUNT(*) FROM capture_queue").fetchone()[0] == 0
+
+
 # --- on the pool page ---
 
 
@@ -351,3 +372,19 @@ def test_captured_scores_count_in_lazer_tournaments_and_old_ones_are_marked(clie
     assert "800,000" in sheet and "600,000" in sheet  # both count; age only marks
     assert sheet.count('class="old-flag"') == 1  # the January one, as text and not by colour
     assert "osu! API" in details
+
+
+def test_a_pulled_score_counts_on_a_v2_tournament_marked_lazer_and_feeds_the_team_average(
+    client, login, csrf, db, osu, cup
+):
+    db.execute("UPDATE tournaments SET scoring = 'v2' WHERE id = ?", (cup["id"],))
+    osu.add_api_score(1001, PLAYER, 9001, total_score=850_000)
+    login(PLAYER)
+
+    refresh(client, csrf(), cup["id"])
+    sheet = client.get(f"/t/{cup['id']}/pool").text.split("Scores and notes per map")[0]
+
+    assert captured(db) == [(PLAYER, 1001)]
+    assert sheet.count("850,000") >= 3  # the player's cell, the map's team score, the averages
+    assert ">lazer</span>" in sheet
+    assert "1 player" in sheet  # counted in the team average of the map

@@ -5,6 +5,8 @@ import re
 
 import pytest
 
+from app.repos import stages as stages_repo
+from app.repos import tournaments as tournaments_repo
 from app.services import csv_io
 from app.services.csv_text import (
     MAX_CSV_BYTES,
@@ -14,6 +16,7 @@ from app.services.csv_text import (
     guard_cell,
     parse_table,
 )
+from app.web.routes.sheet_io import SHOWN_UNKNOWN
 from tests.support import (
     ADMIN_ID,
     add_member,
@@ -127,7 +130,7 @@ def test_the_pool_export_has_one_row_per_players_best_score(client, login, db, c
     best = add_score(db, 1001, PLAYER, 900_000, accuracy=98.0, source="api", scoring="v2")
     db.execute("UPDATE scores SET misses = 2 WHERE id = ?", (best,))
     add_score(db, 1003, OTHER_PLAYER, 700_000, accuracy=97.123, mods="HDHR")
-    add_score(db, 1001, CAPTAIN, 990_000, scoring="lazer")  # another scoring type: does not count
+    add_score(db, 1001, CAPTAIN, 990_000, scoring="v1")  # another scoring type: does not count
     add_score(db, 1001, GUEST, 500_000)  # guests are not on the sheet
     login(PLAYER)
 
@@ -158,7 +161,10 @@ def test_the_export_follows_the_stage_in_the_address(client, login, db, cup):
 
     finals = client.get(f"/t/{cup['id']}/export/pool.csv?stage={cup['finals']}")
 
-    assert "NM1,1005,player2002" in finals.text
+    assert finals.text == (
+        "slot,beatmap_id,player,osu_id,score,accuracy,misses,mods,source\r\n"
+        "NM1,1005,player2002,2002,600000,97.00,,NM,manual\r\n"
+    )
     assert 'filename="SC-Finals-pool.csv"' in finals.headers["content-disposition"]
     assert client.get(f"/t/{cup['id']}/export/pool.csv").text.count("\r\n") == 1  # first stage
 
@@ -489,10 +495,53 @@ def test_bad_rows_are_listed_and_do_not_stop_the_good_ones(client, login, csrf, 
     assert "Enter the accuracy as a number from 0 to 100" in preview
     assert "Misses must be a whole number" in preview
     assert "The row names no player." in preview and "The row names no map." in preview
-    assert "ghost, player2004" in preview and "Not on the roster" in preview  # each name once
     done = import_all(client, token, cup["id"], text)
     assert len(imported(db)) == 1
     assert "9 rows were left out" in client.get(done.headers["location"]).text
+
+
+def csv_of(rows):
+    return HEADER + "\n" + "\n".join(rows)
+
+
+def plan_for(db, cup, rows):
+    tournament = tournaments_repo.get(db, cup["id"])
+    stage = stages_repo.get(db, cup["stage"])
+    table = parse_table(csv_of(rows))
+    return csv_io.plan_import(db, tournament, stage, table, csv_io.detect_mapping(table.headers))
+
+
+def test_players_not_on_the_roster_are_named_once_each_in_the_preview(client, login, csrf, db, cup):
+    rows = [
+        "NM1,ghost,900000,98,,",
+        "NM1,player2002,900000,98,,",  # good
+        "NM1,player2004,900000,98,,",  # a guest: not on the sheet
+        "NM1,ghost,800000,98,,",  # the same unknown player again
+    ]
+
+    plan = plan_for(db, cup, rows)
+
+    assert plan.unknown_players == ["ghost", "player2004"]
+    login(CAPTAIN)
+    preview = upload(client, csrf(), cup["id"], csv_of(rows)).text
+    assert "Not on the roster" in preview
+    assert "<p>ghost, player2004. Add them on the Members page" in preview
+
+
+def test_a_long_list_of_players_not_on_the_roster_is_cut_short_in_the_preview(
+    client, login, csrf, db, cup
+):
+    names = [f"ghost{number:03d}" for number in range(SHOWN_UNKNOWN + 2)]
+    rows = [f"NM1,{name},900000,98,," for name in names]
+    login(CAPTAIN)
+
+    preview = upload(client, csrf(), cup["id"], csv_of(rows)).text
+
+    assert plan_for(db, cup, rows).unknown_players == names
+    assert f"<p>{', '.join(names[:SHOWN_UNKNOWN])} and 2 more. Add them on the Members page" in (
+        preview
+    )
+    assert names[SHOWN_UNKNOWN] not in preview.split("Rows that cannot be imported")[0]
 
 
 def test_the_same_score_twice_in_a_file_is_imported_once(client, login, csrf, db, cup):
@@ -646,6 +695,18 @@ def test_a_file_over_one_megabyte_is_refused_without_reading_it(client, login, c
 
     assert accepted.status_code == 200 and "1 new" in accepted.text
     assert refused.status_code == 422 and "larger than 1 MB" in refused.text
+    assert imported(db) == []
+
+
+def test_an_upload_far_over_the_limit_is_refused_before_the_form_is_parsed(
+    client, login, csrf, db, cup
+):
+    login(CAPTAIN)
+
+    response = upload(client, csrf(), cup["id"], b"a" * (2 * MAX_CSV_BYTES + 1))
+
+    assert response.status_code == 413
+    assert "larger than 2 MB" in response.text
     assert imported(db) == []
 
 

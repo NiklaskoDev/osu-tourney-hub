@@ -192,14 +192,71 @@ def test_failed_scores_do_not_count():
 def test_only_scores_in_the_tournaments_scoring_type_count():
     scores = [
         score(101, 1, 900_000, scoring="v2"),
-        score(101, 1, 990_000, scoring="lazer"),
         score(101, 1, 950_000, scoring="v1"),
         score(101, 1, 960_000, scoring="unknown"),
+        score(101, 1, 990_000, scoring="lazer"),
     ]
 
-    assert best_of(scores, "v2")[(1, 1)].overall.score == 900_000
     assert best_of(scores, "lazer")[(1, 1)].overall.score == 990_000
     assert best_of(scores, "v1")[(1, 1)].overall.score == 950_000
+    assert best_of(scores[:3], "v2")[(1, 1)].overall.score == 900_000  # v1 never mixes into v2
+    assert best_of([scores[1], scores[2]], "v2") == {}
+
+
+def test_a_lazer_score_counts_on_a_v2_tournament_as_a_stand_in():
+    lazer = score(101, 1, 950_000, scoring="lazer")
+
+    assert sheet.counts_for(lazer, "v2")
+    assert sheet.is_stand_in(lazer, "v2")
+    assert sheet.uncounted_reason(NM1, lazer, "v2") is None
+    assert best_of([lazer])[(1, 1)].overall.score == 950_000
+
+
+def test_a_lazer_score_still_needs_to_be_passed_and_to_match_the_mods_on_v2():
+    assert not sheet.counts_for(score(101, 1, 1, scoring="lazer", passed=False), "v2")
+    assert sheet.uncounted_reason(NM1, score(101, 1, 1, scoring="lazer", mods="HD"), "v2") == (
+        "Mods do not match the map"
+    )
+
+
+def test_a_v1_score_does_not_count_on_a_v2_tournament():
+    v1 = score(101, 1, 950_000, scoring="v1")
+
+    assert not sheet.counts_for(v1, "v2")
+    assert not sheet.is_stand_in(v1, "v2")
+    assert sheet.uncounted_reason(NM1, v1, "v2") == "Other scoring type"
+
+
+def test_a_v2_score_does_not_count_on_a_lazer_tournament():
+    v2 = score(101, 1, 950_000, scoring="v2")
+
+    assert not sheet.counts_for(v2, "lazer")
+    assert not sheet.is_stand_in(v2, "lazer")
+    assert sheet.uncounted_reason(NM1, v2, "lazer") == "Other scoring type"
+
+
+def test_a_lazer_score_does_not_count_on_a_v1_tournament():
+    lazer = score(101, 1, 950_000, scoring="lazer")
+
+    assert not sheet.counts_for(lazer, "v1")
+    assert not sheet.is_stand_in(lazer, "v1")
+    assert sheet.uncounted_reason(NM1, lazer, "v1") == "Other scoring type"
+
+
+def test_a_real_v2_score_is_not_a_stand_in_and_lazer_on_lazer_is_not_either():
+    assert not sheet.is_stand_in(score(101, 1, 1, scoring="v2"), "v2")
+    assert not sheet.is_stand_in(score(101, 1, 1, scoring="lazer"), "lazer")
+
+
+def test_the_better_of_a_lazer_and_a_v2_score_wins_on_a_v2_tournament():
+    scores = [
+        score(101, 1, 940_000, scoring="v2"),
+        score(101, 1, 950_000, scoring="lazer"),
+    ]
+
+    best = best_of(scores, "v2")[(1, 1)].overall
+
+    assert best.score == 950_000 and best.scoring == "lazer"
 
 
 def test_old_scores_still_count_but_are_marked():
@@ -234,7 +291,8 @@ def test_a_score_without_a_play_date_ages_from_when_it_was_added():
     ("kwargs", "reason"),
     [
         ({"passed": False}, "Not passed"),
-        ({"scoring": "lazer"}, "Other scoring type"),
+        ({"scoring": "v1"}, "Other scoring type"),
+        ({"scoring": "lazer"}, None),  # a stand-in on a ScoreV2 tournament
         ({"mods": "HD"}, "Mods do not match the map"),
         ({}, None),
     ],

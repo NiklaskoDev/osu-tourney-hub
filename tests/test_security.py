@@ -4,7 +4,8 @@ from datetime import timedelta
 
 import pytest
 
-from app.web.security import SlidingWindowLimiter
+from app.services.csv_text import MAX_CSV_BYTES
+from app.web.security import MAX_REQUEST_BODY_BYTES, SlidingWindowLimiter
 from tests.support import add_member, add_tournament
 
 CSRF_MESSAGE_FRAGMENT = "out of date"
@@ -130,6 +131,111 @@ def test_the_token_changes_with_every_login(client, login, csrf):
     login(2001)
 
     assert csrf() != first
+
+
+# --- the request body cap ---
+
+FORM = {"Content-Type": "application/x-www-form-urlencoded"}
+
+
+@pytest.fixture
+def form_must_stay_unread(monkeypatch):
+    """Fail the test if anything parses the request form."""
+
+    async def unread(self, *args, **kwargs):
+        raise AssertionError("the form was read")
+
+    monkeypatch.setattr("starlette.requests.Request.form", unread)
+
+
+def test_a_body_over_the_cap_is_refused_before_the_form_is_read(
+    client, login, form_must_stay_unread
+):
+    login(2001)
+
+    response = client.post(
+        "/me/timezone", content=b"a" * (MAX_REQUEST_BODY_BYTES + 1), headers=FORM
+    )
+
+    assert response.status_code == 413  # not 403: the token was never looked at
+    assert "larger than 2 MB" in response.text and "at most 1 MB" in response.text
+
+
+def test_a_body_of_exactly_the_cap_gets_past_the_size_guard(client, login):
+    login(2001)
+
+    # Starlette parses at most 1 MB per form field, so the padding is spread over two.
+    head, middle = b"timezone=UTC&p1=", b"&p2="
+    padding = MAX_REQUEST_BODY_BYTES - len(head) - len(middle)
+    body = head + b"a" * (padding // 2) + middle + b"a" * (padding - padding // 2)
+    assert len(body) == MAX_REQUEST_BODY_BYTES
+    response = client.post("/me/timezone", content=body, headers=FORM)
+
+    assert response.status_code == 403  # on to the CSRF check, which this body fails
+    assert CSRF_MESSAGE_FRAGMENT in response.text
+
+
+def test_the_cap_is_twice_the_csv_limit():
+    assert MAX_REQUEST_BODY_BYTES == 2_097_152 == 2 * MAX_CSV_BYTES
+
+
+def test_a_declared_length_over_the_cap_is_refused_whatever_the_body(
+    client, login, form_must_stay_unread
+):
+    login(2001)
+
+    response = client.post(
+        "/me/timezone", content=b"x=1", headers={**FORM, "Content-Length": "2097153"}
+    )
+
+    assert response.status_code == 413
+
+
+@pytest.mark.parametrize("declared", ["abc", "-1", "1.5", "1e3", " "])
+def test_a_content_length_that_is_not_a_number_is_a_bad_request(
+    client, login, form_must_stay_unread, declared
+):
+    login(2001)
+
+    response = client.post(
+        "/me/timezone", content=b"", headers={**FORM, "Content-Length": declared}
+    )
+
+    assert response.status_code == 400
+    assert "could not be read" in response.text
+
+
+def test_a_body_without_a_length_is_refused_with_411(client, login, form_must_stay_unread):
+    login(2001)
+
+    def chunks():
+        yield b"timezone=UTC"
+
+    response = client.post("/me/timezone", content=chunks(), headers=FORM)
+
+    assert response.status_code == 411
+    assert "Send the file again from the page." in response.text
+
+
+def test_the_cap_applies_to_every_unsafe_method_but_not_to_reads(client, login):
+    login(2001)
+    big = b"a" * (MAX_REQUEST_BODY_BYTES + 1)
+
+    for method in ("PUT", "PATCH", "DELETE"):
+        response = client.request(method, "/me", content=big, headers=FORM)
+        assert response.status_code == 413, method
+
+    assert client.get("/me", headers={"Content-Length": "2097153"}).status_code == 200
+
+
+def test_an_upload_within_the_limits_still_reaches_the_route(client, login, csrf):
+    login(2001)
+
+    response = client.post(
+        "/me/timezone", data={**csrf(), "timezone": "UTC"}, follow_redirects=False
+    )
+
+    assert response.status_code == 303
 
 
 class TestSlidingWindowLimiter:

@@ -31,7 +31,7 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - Automatic score capture: each roster player's scores on the maps of the current and next stage are pulled from the osu! API (ranked and loved maps, passed scores, any date) and stored once per osu! score id as lazer standardised scores. Pulls are queued after a wybin sync and every hour, skipped within `CAPTURE_REFRESH_HOURS` (new setting, default 24), and run at a lower rate-limit priority than anything a person waits for. Two new jobs show on the Admin page.
 - "Refresh my scores" on the Pool page pulls your own scores at once (once per 10 minutes); captains can pull every player of a team (`POST /t/{id}/opponents/{team}/capture`, once per team per hour; the button comes with the match pages).
 - Pool page: "Export CSV" (best score per player and map) for everyone on the roster, and the Lineup page exports the saved lineup. Cells that look like spreadsheet formulas are exported as text.
-- Import scores (captains): upload a CSV file (1 MB, 5000 rows, UTF-8) or paste a public Google Sheets link. A preview shows the detected columns, which rows will be imported and which are refused and why; scores already on the sheet are skipped, so importing twice adds nothing. Only docs.google.com is ever contacted.
+- Import scores (captains): upload a CSV file (1 MB, 5000 rows, UTF-8) or paste a public Google Sheets link. A preview shows the detected columns, which rows will be imported and which are refused and why; scores already on the sheet are skipped, so importing twice adds nothing. Only docs.google.com and the download address Google redirects it to are ever contacted.
 - Not in this version: the automatic pull for the next scheduled opponent and the availability export; both need the match and availability tables of the schedule phase.
 
 ### Changed
@@ -42,9 +42,14 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - Guests may read team notes on the Pool page (as before); they still cannot write or delete notes. Now covered by a test.
 - Deleting a tournament says on the Admin page that lineups and notes go with it and that scores are kept without their tournament link.
 - README: port 8080 must only be reachable through the reverse proxy; corrected which settings are read yet.
+- Lazer scores from osu! count on ScoreV2 tournaments (osu! offers no ScoreV2 figure), marked "lazer" on the Pool page; ScoreV1 scores still never count there.
 
 ### Fixed
 - A refused lineup save keeps the "include substitutes" choice; `subs` in the lineup address only counts when it is `1`.
+- Scores from osu! are pulled in the current score format; before, osu! answered in an older format and every pulled score was left out.
+- The Google Sheets import follows Google's redirect to its CSV download address (`doc-...-sheets.googleusercontent.com`) and refuses any other target.
+- A failed wybin sync reports its own error instead of one from the score queue.
 
 ### Security
+- State-changing requests larger than 2 MB, with an unreadable `Content-Length`, or without a `Content-Length` (chunked) are refused before their body is read.
 - CSRF token on every state-changing request, a per-IP limit of 20 requests a minute on the login routes, and session cookies that are HttpOnly, Secure (on https) and SameSite=Lax.

@@ -20,9 +20,9 @@
 {%- endif -%}
 {%- endmacro %}
 
-{% macro score_cell(score, old, show_mods) -%}
+{% macro score_cell(score, old, show_mods, lazer) -%}
 <span class="num">{{ score.score|fmt_score }}</span>
-<span class="cell-sub muted">{{ score.accuracy|fmt_acc }}{% if show_mods %} {{ score.mods|mods }}{% endif %}{% if old %} <span class="old-flag" title="Played more than 6 months ago">old</span>{% endif %}</span>
+<span class="cell-sub muted">{{ score.accuracy|fmt_acc }}{% if show_mods %} {{ score.mods|mods }}{% endif %}{% if old %} <span class="old-flag" title="Played more than 6 months ago">old</span>{% endif %}{% if lazer %} <span class="old-flag" title="Lazer standardised score from osu!, not ScoreV2">lazer</span>{% endif %}</span>
 {%- endmacro %}
 
 {% macro average_cell(average) -%}
@@ -60,7 +60,7 @@
 {{ empty_state("This stage has no maps yet. An administrator adds them on the admin page.") }}
 {% endif %}
 {% else %}
-<p class="muted">Scores count in {{ scoring_label }}, with accuracy beside each one. {{ old_scores_hint }} Scores from osu! are pulled automatically for ranked and loved maps.</p>
+<p class="muted">Scores count in {{ scoring_label }}, with accuracy beside each one. {{ old_scores_hint }} Scores from osu! are pulled automatically for ranked and loved maps.{% if tournament.scoring == "v2" %} Lazer scores from osu! count too and are marked lazer; they are close to ScoreV2 but not the same.{% endif %}</p>
 
 <div class="row">
   {% if can_refresh %}
@@ -108,7 +108,7 @@
     <td class="is-numeric">{{ "%g"|format(m.od) if m.od is not none else "-" }}</td>
     <td class="is-numeric">{{ "%g"|format(m.hp) if m.hp is not none else "-" }}</td>
     {% for cell in row.cells %}
-    <td class="is-numeric">{% if cell.score %}{{ score_cell(cell.score, cell.old, m.is_freemod or m.is_tiebreaker) }}{% else %}<span class="muted" aria-label="No score">-</span>{% endif %}</td>
+    <td class="is-numeric">{% if cell.score %}{{ score_cell(cell.score, cell.old, m.is_freemod or m.is_tiebreaker, cell.lazer) }}{% else %}<span class="muted" aria-label="No score">-</span>{% endif %}</td>
     {% endfor %}
     <td class="is-numeric">{% if row.team_count %}<span class="num">{{ row.team_score|fmt_score }}</span> <span class="cell-sub muted">{{ row.team_accuracy|fmt_acc }} &middot; {{ row.team_count }} {{ "player" if row.team_count == 1 else "players" }}</span>{% else %}<span class="muted" aria-label="No scores">-</span>{% endif %}</td>
   </tr>

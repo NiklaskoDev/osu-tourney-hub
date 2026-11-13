@@ -1,8 +1,9 @@
 """The mappool sheet's rules: which scores count on a map, the best one per player, averages.
 
 Pure functions. A score counts when it was passed and uses the tournament's scoring type (D3), so
-ScoreV1 and lazer scores never mix into ScoreV2 averages. Scores older than `OLD_SCORE_DAYS`
-still count; they are only marked old (D6).
+ScoreV1 never mixes into ScoreV2 averages. One exception (plan 002): osu! offers no ScoreV2 figure,
+so lazer standardised scores count on ScoreV2 tournaments as a stand-in, marked "lazer" on the
+page. Scores older than `OLD_SCORE_DAYS` still count; they are only marked old (D6).
 """
 
 from collections.abc import Iterable
@@ -37,15 +38,20 @@ class Average:
     total: int
 
 
+def is_stand_in(score: Score, scoring: str) -> bool:
+    """A lazer standardised score counted on a ScoreV2 tournament, close to ScoreV2 but not it."""
+    return scoring == "v2" and score.scoring == "lazer"
+
+
 def counts_for(score: Score, scoring: str) -> bool:
-    return score.passed and score.scoring == scoring
+    return score.passed and (score.scoring == scoring or is_stand_in(score, scoring))
 
 
 def uncounted_reason(pool_map: PoolMap, score: Score, scoring: str) -> str | None:
     """Why a score on this map is left out of the sheet, or None when it counts."""
     if not score.passed:
         return "Not passed"
-    if score.scoring != scoring:
+    if score.scoring != scoring and not is_stand_in(score, scoring):
         return "Other scoring type"
     if not accepts_mods(pool_map, score.mods):
         return "Mods do not match the map"

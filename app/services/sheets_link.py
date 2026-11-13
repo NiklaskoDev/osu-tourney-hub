@@ -1,9 +1,11 @@
 """Fetch a public Google Sheets link as CSV (D7).
 
-Only `https://docs.google.com/spreadsheets/d/<id>` links are accepted, and the request goes to
-`docs.google.com` and nowhere else: the address is rebuilt from the sheet id (and tab), never taken
-as typed, and a redirect is only followed when it stays on that host. There is no way to make the
-app fetch an arbitrary address.
+Only `https://docs.google.com/spreadsheets/d/<id>` links are accepted. The first request goes to
+`docs.google.com`: the address is rebuilt from the sheet id (and tab), never taken as typed. Google
+answers a CSV export with a redirect to a signed `doc-...-sheets.googleusercontent.com` address, so
+a redirect is followed only to `docs.google.com` or that host pattern, over https, without a port
+or userinfo. Any other target (a sign-in page for a private sheet, say) is refused. There is no way
+to make the app fetch an arbitrary address.
 """
 
 import re
@@ -14,6 +16,7 @@ import httpx
 from app.services.csv_text import MAX_CSV_BYTES, CsvImportError
 
 SHEETS_HOST = "docs.google.com"
+CSV_DOWNLOAD_HOST = re.compile(r"doc-[0-9a-z-]{1,40}-sheets\.googleusercontent\.com")
 MAX_REDIRECTS = 3
 _SHEET_PATH = re.compile(r"/spreadsheets/d/([A-Za-z0-9_-]{10,100})(?:/|$)")
 _GID = re.compile(r"\d{1,10}")
@@ -56,7 +59,7 @@ async def fetch_sheet_csv(http: httpx.AsyncClient, link: str) -> str:
         try:
             async with http.stream("GET", url, headers={"Accept": "text/csv"}) as response:
                 if response.is_redirect:
-                    url = _same_host(urljoin(url, response.headers.get("location", "")))
+                    url = _allowed_redirect(urljoin(url, response.headers.get("location", "")))
                     continue
                 return await _read(response)
         except httpx.HTTPError as error:
@@ -84,10 +87,24 @@ async def _read(response: httpx.Response) -> str:
         raise CsvImportError("The sheet is not UTF-8 text.") from error
 
 
-def _same_host(url: str) -> str:
+def _allowed_redirect(url: str) -> str:
+    """The redirect target if it is one of Google's two sheet hosts; else `NOT_SHARED`, which is
+    what a private sheet's redirect to the sign-in page ends as."""
     parts = urlsplit(url)
-    if parts.scheme != "https" or parts.hostname != SHEETS_HOST:
-        raise CsvImportError(NOT_SHARED)  # usually Google's sign-in page for a private sheet
+    try:
+        port = parts.port
+    except ValueError:
+        port = -1
+    host = parts.hostname or ""
+    allowed = (
+        parts.scheme == "https"
+        and port is None
+        and parts.username is None
+        and parts.password is None
+        and (host == SHEETS_HOST or CSV_DOWNLOAD_HOST.fullmatch(host) is not None)
+    )
+    if not allowed:
+        raise CsvImportError(NOT_SHARED)
     return url
 
 

@@ -114,7 +114,7 @@ def test_scores_older_than_six_months_are_marked_old_and_still_count(client, log
 
 
 def test_scores_of_another_scoring_type_are_listed_but_do_not_count(client, login, db, cup):
-    add_score(db, 1001, PLAYER, 990_000, scoring="lazer")
+    add_score(db, 1001, PLAYER, 990_000, scoring="v1")
     add_score(db, 1001, PLAYER, 800_000, scoring="v2")
     login(PLAYER)
 
@@ -123,7 +123,45 @@ def test_scores_of_another_scoring_type_are_listed_but_do_not_count(client, logi
 
     assert "800,000" in sheet and "990,000" not in sheet
     assert "990,000" in details
+    assert "Not counted: ScoreV1 score" in details
+
+
+def test_a_lazer_score_counts_on_a_v2_tournament_and_is_marked(client, login, db, cup):
+    add_score(db, 1001, PLAYER, 990_000, scoring="lazer", source="api")
+    add_score(db, 1001, PLAYER, 800_000, scoring="v2")
+    login(PLAYER)
+
+    page = client.get(f"/t/{cup['id']}/pool").text
+    sheet, details = page.split("Scores and notes per map")
+
+    assert "990,000" in sheet and "800,000" not in sheet  # the better score wins the cell
+    assert ">lazer</span>" in sheet
+    assert 'title="Lazer standardised score from osu!, not ScoreV2"' in sheet
+    assert "Best (lazer score)" in details
+    assert "<td>Counts</td>" in details  # the real ScoreV2 score is not marked
+    assert "close to ScoreV2 but not the same" in page
+
+
+def test_a_real_v2_score_is_not_marked_lazer(client, login, db, cup):
+    add_score(db, 1001, PLAYER, 800_000, scoring="v2")
+    login(PLAYER)
+
+    page = client.get(f"/t/{cup['id']}/pool").text
+
+    assert ">lazer</span>" not in page and "lazer score" not in page
+
+
+def test_a_lazer_score_does_not_count_on_a_v1_tournament(client, login, db, cup):
+    db.execute("UPDATE tournaments SET scoring = 'v1' WHERE id = ?", (cup["id"],))
+    add_score(db, 1001, PLAYER, 990_000, scoring="lazer")
+    login(PLAYER)
+
+    page = client.get(f"/t/{cup['id']}/pool").text
+    sheet, details = page.split("Scores and notes per map")
+
+    assert "990,000" not in sheet and ">lazer</span>" not in page
     assert "Not counted: Lazer standardised score" in details
+    assert "close to ScoreV2" not in page  # the hint is for ScoreV2 tournaments only
 
 
 def test_a_tournament_using_lazer_counts_only_lazer_scores(client, login, db, cup):

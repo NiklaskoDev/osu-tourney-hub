@@ -1,4 +1,5 @@
-"""Importing from a public Google Sheets link: only docs.google.com is ever contacted (D7)."""
+"""Importing from a public Google Sheets link: only docs.google.com and the CSV download host it
+redirects to are ever contacted (D7)."""
 
 import httpx
 import pytest
@@ -7,6 +8,7 @@ from app.clients.http import make_http_client
 from app.services.csv_text import MAX_CSV_BYTES, CsvImportError
 from app.services.sheets_link import MAX_REDIRECTS, export_url, fetch_sheet_csv
 from tests.support import (
+    DOWNLOAD_HOST,
     SHEET_ID,
     add_member,
     add_pool_map,
@@ -16,6 +18,7 @@ from tests.support import (
 
 CAPTAIN, PLAYER = 2001, 2002
 BASE = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+DOWNLOAD = f"https://{DOWNLOAD_HOST}/export/x"
 SHEET_CSV = "slot,player,score,accuracy\nNM1,player2002,900000,98.5\nHD1,player2002,800000,97\n"
 
 
@@ -122,6 +125,79 @@ async def test_a_redirect_inside_docs_google_com_is_followed(fetch, sheets):
         f"/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0",
         f"/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=7",
     ]
+
+
+@pytest.mark.anyio
+async def test_the_redirect_to_googles_csv_download_host_is_followed(fetch, sheets):
+    sheets.download = SHEET_CSV
+    sheets.redirect_once_to = DOWNLOAD
+
+    assert await fetch() == SHEET_CSV
+
+    assert [request.url.host for request in sheets.requests] == ["docs.google.com", DOWNLOAD_HOST]
+    assert all(request.url.scheme == "https" for request in sheets.requests)
+    assert all(
+        "authorization" not in r.headers and "cookie" not in r.headers for r in sheets.requests
+    )
+
+
+@pytest.mark.anyio
+async def test_the_one_megabyte_cap_applies_on_the_download_host_too(fetch, sheets):
+    sheets.download = "a" * (MAX_CSV_BYTES + 1)
+    sheets.redirect_once_to = DOWNLOAD
+
+    with pytest.raises(CsvImportError, match="larger than 1 MB"):
+        await fetch()
+
+
+@pytest.mark.anyio
+async def test_a_sign_in_page_on_the_download_host_is_still_not_a_sheet(fetch, sheets):
+    sheets.download = "<html>Sign in</html>"
+    sheets.content_type = "text/html"
+    sheets.redirect_once_to = DOWNLOAD
+
+    with pytest.raises(CsvImportError, match="Anyone with the link"):
+        await fetch()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "target",
+    [
+        f"http://{DOWNLOAD_HOST}/export/x",  # not https
+        f"https://{DOWNLOAD_HOST}:8443/export/x",  # a port
+        f"https://user@{DOWNLOAD_HOST}/export/x",  # userinfo
+        f"https://user:pw@{DOWNLOAD_HOST}/export/x",
+        "https://evil.googleusercontent.com/export/x",
+        f"https://{DOWNLOAD_HOST}.evil.example/export/x",
+        f"https://evil{DOWNLOAD_HOST}/export/x",
+        "https://lh3.googleusercontent.com/export/x",
+        "https://googleusercontent.com/export/x",
+        "https://doc--sheets.googleusercontent.com.evil.example/x",
+        "https://doc-0s-6g-sheets-googleusercontent.com/x",
+        "https://accounts.google.com/ServiceLogin?continue=x",
+        f"https://docs.google.com:444/spreadsheets/d/{SHEET_ID}/export?format=csv",
+        f"https://user@docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv",
+    ],
+)
+async def test_a_redirect_to_a_lookalike_or_a_port_is_refused(fetch, sheets, target):
+    sheets.download = SHEET_CSV
+    sheets.redirect_to = target
+
+    with pytest.raises(CsvImportError, match="did not hand out the sheet"):
+        await fetch()
+
+    assert len(sheets.requests) == 1
+
+
+@pytest.mark.anyio
+async def test_a_redirect_with_an_unreadable_port_is_refused(fetch, sheets):
+    sheets.redirect_to = f"https://{DOWNLOAD_HOST}:abc/export/x"  # httpx itself rejects this one
+
+    with pytest.raises(CsvImportError):
+        await fetch()
+
+    assert len(sheets.requests) == 1
 
 
 @pytest.mark.anyio
@@ -306,6 +382,17 @@ def test_a_sheet_redirecting_away_is_refused(client, login, csrf, sheets, cup):
 
     assert response.status_code == 422
     assert {request.url.host for request in sheets.requests} == {"docs.google.com"}
+
+
+def test_a_sheet_served_from_googles_download_host_is_previewed(client, login, csrf, sheets, cup):
+    sheets.download = SHEET_CSV
+    sheets.redirect_once_to = DOWNLOAD
+    login(CAPTAIN)
+
+    response = post_link(client, csrf(), cup["id"], f"{BASE}/edit")
+
+    assert response.status_code == 200 and "2 new" in response.text
+    assert [r.url.host for r in sheets.requests] == ["docs.google.com", DOWNLOAD_HOST]
 
 
 def test_a_file_wins_over_a_link_when_both_are_sent(client, login, csrf, sheets, cup):

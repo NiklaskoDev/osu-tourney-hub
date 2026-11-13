@@ -3,7 +3,8 @@
 A pull asks osu! for every score one player has on one beatmap (ranked and loved maps only; osu!
 keeps nothing for others). Pulls wait in `capture_queue`; `drain` works through them at the
 `CAPTURE` rate-limit priority, so live and interactive calls always go first. Captured scores are
-stored once per osu! score id (D3: lazer standardised score; D6: any date, marked old later).
+stored once per osu! score id (D3: lazer standardised score, which also counts on ScoreV2
+tournaments, marked "lazer", per plan 002; D6: any date, marked old later).
 """
 
 import logging

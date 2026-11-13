@@ -43,8 +43,8 @@ def insert_imported(conn: sqlite3.Connection, new: NewScore, created_at: str) ->
 
 
 def insert_api(conn: sqlite3.Connection, score: ApiScore, gamemode: int, created_at: str) -> bool:
-    """Store a captured osu! score (always lazer standardised, D3). Returns False when this score
-    id was captured before for that player."""
+    """Store a captured osu! score (always lazer standardised, D3; ScoreV2 tournaments count it too,
+    marked). Returns False when this score id was captured before for that player."""
     cursor = conn.execute(
         "INSERT OR IGNORE INTO scores (beatmap_id, osu_id, gamemode, mods, score, scoring, "
         "accuracy, max_combo, misses, passed, achieved_at, source, source_ref, source_url, "
