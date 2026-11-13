@@ -25,6 +25,8 @@ EXPECTED_TABLES = {
     "lineup_entries",
     "capture_queue",
     "capture_log",
+    "matches",
+    "availability",
 }
 
 
@@ -442,3 +444,90 @@ def test_a_queued_pull_starts_with_no_attempts(migrated):
     migrated.execute(QUEUE_INSERT, (5, 1001, 0))
 
     assert migrated.execute("SELECT attempts FROM capture_queue").fetchone()[0] == 0
+
+
+# --- 0005: matches and availability ---
+
+MATCH_INSERT = (
+    "INSERT INTO matches (tournament_id, wybin_match_id, status, updated_at) "
+    "VALUES (?, ?, ?, '2026-01-01T00:00:00Z')"
+)
+SLOT_INSERT = (
+    "INSERT INTO availability (tournament_id, osu_id, slot_start, status) VALUES (?, ?, ?, ?)"
+)
+
+
+def _tournament(migrated) -> int:
+    cursor = migrated.execute(
+        "INSERT INTO tournaments (name, gamemode, is_solo, created_at) "
+        "VALUES ('Cup', 0, 0, '2026-01-01T00:00:00Z')"
+    )
+    return int(cursor.lastrowid)
+
+
+def test_a_match_only_accepts_the_known_statuses(migrated):
+    tid = _tournament(migrated)
+    for number, status in enumerate(("scheduled", "live", "done")):
+        migrated.execute(MATCH_INSERT, (tid, number, status))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(MATCH_INSERT, (tid, 99, "postponed"))
+    with pytest.raises(sqlite3.IntegrityError):  # sync never cancels a match
+        migrated.execute(MATCH_INSERT, (tid, 98, "cancelled"))
+
+
+def test_a_wybin_match_id_is_stored_once(migrated):
+    tid = _tournament(migrated)
+    migrated.execute(MATCH_INSERT, (tid, 5001, "scheduled"))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(MATCH_INSERT, (tid, 5001, "scheduled"))
+
+
+def test_matches_without_a_wybin_id_may_repeat(migrated):
+    tid = _tournament(migrated)
+
+    migrated.execute(MATCH_INSERT, (tid, None, "scheduled"))
+    migrated.execute(MATCH_INSERT, (tid, None, "scheduled"))
+
+
+def test_deleting_a_tournament_deletes_its_matches_and_availability(migrated):
+    tid = _tournament(migrated)
+    migrated.execute(MATCH_INSERT, (tid, 1, "scheduled"))
+    migrated.execute(SLOT_INSERT, (tid, 5, "2026-11-16T18:00:00Z", "yes"))
+
+    migrated.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
+
+    assert migrated.execute("SELECT COUNT(*) FROM matches").fetchone()[0] == 0
+    assert migrated.execute("SELECT COUNT(*) FROM availability").fetchone()[0] == 0
+
+
+def test_deleting_a_team_keeps_the_match_with_an_empty_side(migrated):
+    tid = _tournament(migrated)
+    team = migrated.execute("INSERT INTO teams (tournament_id, name) VALUES (?, 'A')", (tid,))
+    migrated.execute(
+        "INSERT INTO matches (tournament_id, team1_id, status, updated_at) "
+        "VALUES (?, ?, 'scheduled', '2026-01-01T00:00:00Z')",
+        (tid, team.lastrowid),
+    )
+
+    migrated.execute("DELETE FROM teams WHERE id = ?", (team.lastrowid,))
+
+    assert migrated.execute("SELECT team1_id FROM matches").fetchone()[0] is None
+
+
+def test_an_availability_slot_is_one_row_per_person_and_slot(migrated):
+    tid = _tournament(migrated)
+    migrated.execute(SLOT_INSERT, (tid, 5, "2026-11-16T18:00:00Z", "yes"))
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(SLOT_INSERT, (tid, 5, "2026-11-16T18:00:00Z", "maybe"))
+    migrated.execute(SLOT_INSERT, (tid, 6, "2026-11-16T18:00:00Z", "maybe"))  # another person
+    migrated.execute(SLOT_INSERT, (tid, 5, "2026-11-16T18:30:00Z", "no"))  # another slot
+
+
+def test_availability_only_accepts_yes_maybe_and_no(migrated):
+    tid = _tournament(migrated)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(SLOT_INSERT, (tid, 5, "2026-11-16T18:00:00Z", "perhaps"))

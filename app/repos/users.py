@@ -83,6 +83,11 @@ def export_data(conn: sqlite3.Connection, osu_id: int) -> dict[str, Any]:
         "WHERE author_osu_id = ? ORDER BY id",
         (osu_id,),
     ).fetchall()
+    availability = conn.execute(
+        "SELECT tournament_id, slot_start, status FROM availability WHERE osu_id = ? "
+        "ORDER BY tournament_id, slot_start",
+        (osu_id,),
+    ).fetchall()
     return {
         "profile": dict(profile) if profile else None,
         "tournament_memberships": [
@@ -91,6 +96,7 @@ def export_data(conn: sqlite3.Connection, osu_id: int) -> dict[str, Any]:
         "calendar_feed_tokens": [dict(row) for row in feed_tokens],
         "scores": [{**dict(row), "passed": bool(row["passed"])} for row in scores],
         "notes": [dict(row) for row in notes],
+        "availability": [dict(row) for row in availability],
     }
 
 
@@ -111,6 +117,7 @@ def delete(conn: sqlite3.Connection, osu_id: int) -> None:
         )
         conn.execute("DELETE FROM tournament_members WHERE osu_id = ?", (osu_id,))
         conn.execute("DELETE FROM notes WHERE author_osu_id = ?", (osu_id,))
+        conn.execute("DELETE FROM availability WHERE osu_id = ?", (osu_id,))
         # Scores taken from osu! are public and stay, without the link to who entered them.
         conn.execute(
             "DELETE FROM scores WHERE osu_id = ? AND source IN ('manual', 'import')", (osu_id,)

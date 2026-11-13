@@ -18,11 +18,13 @@ import httpx
 from app.clients.wybin_models import (
     WybinBracket,
     WybinFormatError,
+    WybinMatch,
     WybinNotFound,
     WybinTournament,
     WybinUnavailable,
     WybinUserDetail,
     parse_mappool_stages,
+    parse_matches,
     parse_tournament,
     parse_user_detail,
 )
@@ -92,6 +94,11 @@ class WybinClient:
         """Pools by wybin stage id; stages wybin sent no pool for are left out."""
         data = await self._get(f"/tournament-mappools/{wybin_id}", "mappools")
         return _parsed(parse_mappool_stages, data, "mappools")
+
+    async def get_matches(self, wybin_id: int) -> list[WybinMatch]:
+        """Every match of the tournament, with the stage it belongs to."""
+        data = await self._get(f"/tournament-matches/{wybin_id}", "matches")
+        return _parsed(parse_matches, data, "matches")
 
     async def get_user_detailed(self, wybin_user_id: int) -> WybinUserDetail:
         """The tournaments a wybin user signed up for."""

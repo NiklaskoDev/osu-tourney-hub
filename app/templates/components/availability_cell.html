@@ -1,7 +1,15 @@
-{#- state: yes | maybe | no. Shown as pattern plus text, never colour alone. -#}
+{#- state: yes | maybe | no. Shown as pattern plus text, never colour alone. The button's accessible
+    name is "<label>: <state>" and app.js keeps it current. With `slot` (a UTC slot start) the cell
+    belongs to the availability grid, which sets ranges itself; without it, a click cycles the
+    state in place (styleguide). `label` says whose slot at what time. -#}
 {% set availability_labels = {"yes": "Yes", "maybe": "Maybe", "no": "No"} %}
-{% macro availability_cell(state, disabled=false) -%}
-<button class="avail" type="button" data-state="{{ state }}" data-cycle-state{% if disabled %} disabled{% endif %}>
+{% macro availability_cell(state, disabled=false, slot=none, label=none) -%}
+<button class="avail" type="button" data-state="{{ state }}"{% if slot %} data-slot="{{ slot }}"{% else %} data-cycle-state{% endif %}{% if label %} data-label="{{ label }}" aria-label="{{ label }}: {{ availability_labels[state] }}"{% endif %}{% if disabled %} disabled{% endif %}>
   <span data-avail-label>{{ availability_labels[state] }}</span>
 </button>
+{%- endmacro %}
+
+{#- Someone else's answer in the grid: the same pattern and text, not a control. -#}
+{% macro availability_static(state) -%}
+<span class="avail avail--static" data-state="{{ state }}">{{ availability_labels[state] }}</span>
 {%- endmacro %}

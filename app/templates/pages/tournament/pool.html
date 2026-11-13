@@ -159,7 +159,7 @@
           <td class="is-numeric">{{ line.score.score|fmt_score }}</td>
           <td class="is-numeric">{{ line.score.accuracy|fmt_acc }}</td>
           <td>{{ line.score.mods|mods }}</td>
-          <td>{{ local_time(line.score.played_at) }}{% if line.old %} <span class="old-flag" title="Played more than 6 months ago">old</span>{% endif %}</td>
+          <td>{{ local_time(line.score.played_at) }}{% if line.old %} <span class="old-flag" title="Played more than 6 months ago">old</span>{% endif %}{% if line.lazer %} <span class="old-flag" title="Lazer standardised score from osu!, not ScoreV2">lazer</span>{% endif %}</td>
           <td>{% if line.link %}<a href="{{ line.link }}" rel="noopener noreferrer">{{ line.source }}</a>{% else %}{{ line.source }}{% endif %}{% if line.hint %} <span class="muted">({{ line.hint }})</span>{% endif %}</td>
           <td>{{ line.status }}</td>
           <td>

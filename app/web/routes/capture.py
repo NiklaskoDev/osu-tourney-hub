@@ -86,12 +86,14 @@ async def capture_team_scores(
     request: Request,
     team_id: int,
     background: BackgroundTasks,
+    return_to: str = Form(""),
     access: TournamentAccess = Depends(captain_access),
     _writable: TournamentAccess = Depends(require_writable),
     db: sqlite3.Connection = Depends(get_db),
     clock: Clock = Depends(get_clock),
 ) -> Response:
-    """Queue every player of one team (an opponent, usually) for the current and next stage."""
+    """Queue every player of one team (an opponent, usually) for the current and next stage.
+    The schedule page asks to come back to itself with `return_to=schedule`."""
     team = teams_repo.get(db, team_id)
     if team is None or team.tournament_id != access.tournament.id:
         raise UserFacingError(404, "This team is not in this tournament.")
@@ -104,4 +106,5 @@ async def capture_team_scores(
         _start_pull(request, background)
     else:
         flash(request, "info", f"{team.name} has no players or there are no maps to pull for yet.")
-    return RedirectResponse(f"/t/{access.tournament.id}", status_code=303, background=background)
+    back = f"/t/{access.tournament.id}" + ("/schedule" if return_to == "schedule" else "")
+    return RedirectResponse(back, status_code=303, background=background)

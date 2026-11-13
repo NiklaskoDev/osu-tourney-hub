@@ -1,0 +1,95 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/button.html" import button %}
+{% from "components/countdown.html" import countdown, local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/table.html" import table %}
+{% block title %}Schedule - {{ tournament.name }} - {% endblock %}
+
+{% macro pull_scores(view) -%}
+{% if can_manage and view.opponent %}
+<form method="post" action="/t/{{ tournament.id }}/opponents/{{ view.opponent.id }}/capture">
+  {{ csrf_field(csrf_token) }}
+  <input type="hidden" name="return_to" value="schedule">
+  {{ button("Pull scores", variant="text", type="submit", icon_name="refresh-cw", disabled=archived, title="Pull " ~ view.opponent.name ~ "'s scores from osu!") }}
+</form>
+{% endif %}
+{%- endmacro %}
+
+{% block tournament_content %}
+<div class="page__header">
+  <h1>Schedule</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if not schedule.only_ours %}
+{% call alert("info", "No team is marked as yours") %}Every match of the tournament is listed. An administrator can choose your team on the Settings page.{% endcall %}
+{% endif %}
+
+<section class="stack" aria-labelledby="upcoming-heading">
+  <h2 id="upcoming-heading">Upcoming</h2>
+  {% if schedule.upcoming %}
+  {% call table("Upcoming matches") %}
+  <thead>
+    <tr>
+      <th scope="col">Match</th>
+      <th scope="col">Opponent</th>
+      <th scope="col">Stage</th>
+      <th scope="col">Starts</th>
+      <th scope="col"><span class="visually-hidden">Actions</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for view in schedule.upcoming %}
+    <tr>
+      <th scope="row">{{ view.match.label or view.title }}{% if view.match.label %}<span class="cell-sub muted">{{ view.title }}</span>{% endif %}</th>
+      <td>{{ view.opponent_name }}</td>
+      <td>{{ view.stage_name or "-" }}</td>
+      <td>{% if view.match.scheduled_at %}{{ local_time(view.match.scheduled_at) }}<span class="cell-sub muted">in {{ countdown(view.match.scheduled_at) }}</span>{% else %}<span class="muted">Not scheduled yet</span>{% endif %}</td>
+      <td>
+        <div class="row row--nowrap">
+          {% if view.can_find_slot %}{{ button("Find a slot", variant="secondary", href="/t/" ~ tournament.id ~ "/schedule/slots?match=" ~ view.match.id, icon_name="clock", hx_get="/t/" ~ tournament.id ~ "/schedule/slots?match=" ~ view.match.id, hx_target="#slots-panel", hx_swap="innerHTML") }}{% endif %}
+          {{ pull_scores(view) }}
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  {% else %}
+  {{ empty_state("No upcoming matches are listed." ~ (" They appear here after the next wybin sync." if tournament.source == "wybin" else " Matches come from wybin; this tournament was created by hand, so there are none.")) }}
+  {% endif %}
+  <div id="slots-panel" aria-live="polite"></div>
+</section>
+
+<section class="stack" aria-labelledby="past-heading">
+  <h2 id="past-heading">Played</h2>
+  {% if schedule.past %}
+  {% call table("Played matches") %}
+  <thead>
+    <tr>
+      <th scope="col">Match</th>
+      <th scope="col">Opponent</th>
+      <th scope="col">Stage</th>
+      <th scope="col">Played</th>
+      <th scope="col">Result</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for view in schedule.past %}
+    <tr>
+      <th scope="row">{{ view.match.label or view.title }}{% if view.match.label %}<span class="cell-sub muted">{{ view.title }}</span>{% endif %}</th>
+      <td>{{ view.opponent_name }}</td>
+      <td>{{ view.stage_name or "-" }}</td>
+      <td>{% if view.match.scheduled_at %}{{ local_time(view.match.scheduled_at) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+      <td>{% if view.result %}{% if view.outcome == "W" %}<span class="result--win">W</span>{% elif view.outcome == "L" %}<span class="result--loss">L</span>{% endif %} <span class="num">{{ view.result }}</span>{% else %}<span class="muted">No result yet</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  {% else %}
+  {{ empty_state("No match has been played yet.") }}
+  {% endif %}
+</section>
+{% endblock %}

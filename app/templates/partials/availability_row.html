@@ -1,0 +1,13 @@
+{#- One 30-minute slot of the availability grid. `editable_id` is the column with buttons (the
+    viewer's own, or the one a captain chose); the rest show text only. With `oob` the row replaces
+    the one on the page that has the same id (htmx out-of-band swap). -#}
+{% from "components/availability_cell.html" import availability_cell, availability_static %}
+{% macro slot_row(row, columns, editable_id, lineup_size, archived, oob=false) -%}
+<tr id="{{ row.row_id }}"{% if oob %} hx-swap-oob="true"{% endif %} class="slot{% if row.in_match %} slot--match{% endif %}">
+  <th scope="row" class="slot__time">{{ row.time_label }}{% if row.band_label %}<span class="cell-sub slot__band">Match {{ row.band_label }}</span>{% endif %}</th>
+  <td class="slot__sum{% if row.yes >= lineup_size %} is-enough{% endif %}">{{ row.yes }} / {{ lineup_size }}{% if row.maybe %}<span class="cell-sub muted">+{{ row.maybe }} maybe</span>{% endif %}{% if row.yes >= lineup_size %}<span class="visually-hidden"> enough players</span>{% endif %}</td>
+  {% for column in columns -%}
+  <td>{% if column.osu_id == editable_id %}{{ availability_cell(row.states[loop.index0], disabled=archived, slot=row.slot_text, label=column.name ~ ", " ~ row.spoken_label) }}{% else %}{{ availability_static(row.states[loop.index0]) }}{% endif %}</td>
+  {% endfor -%}
+</tr>
+{%- endmacro %}

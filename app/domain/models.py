@@ -246,3 +246,35 @@ class LineupEntry:
     pool_map_id: int
     osu_id: int
     mods: str
+
+
+@dataclass(frozen=True)
+class Match:
+    """One match of a tournament. Teams, stage and time stay empty until wybin names them."""
+
+    id: int
+    tournament_id: int
+    stage_id: int | None
+    wybin_match_id: int | None
+    label: str | None
+    team1_id: int | None
+    team2_id: int | None
+    scheduled_at: str | None
+    score1: int | None
+    score2: int | None
+    mp_match_id: int | None
+    status: str
+    updated_at: str
+
+    def opponent_of(self, team_id: int | None) -> int | None:
+        """The other team's id when `team_id` plays in this match, else None."""
+        if team_id is None:
+            return None
+        if self.team1_id == team_id:
+            return self.team2_id
+        if self.team2_id == team_id:
+            return self.team1_id
+        return None
+
+    def involves(self, team_id: int | None) -> bool:
+        return team_id is not None and team_id in (self.team1_id, self.team2_id)

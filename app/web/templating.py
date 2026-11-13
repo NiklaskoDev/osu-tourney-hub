@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app import __version__
+from app.clock import to_utc_iso
 from app.db.connection import open_db
 from app.domain.models import User
 from app.domain.modes import display_mods
@@ -43,6 +44,7 @@ def fmt_length(seconds: int | None) -> str:
 templates.env.filters["fmt_score"] = fmt_score
 templates.env.filters["fmt_acc"] = fmt_acc
 templates.env.filters["fmt_length"] = fmt_length
+templates.env.filters["utc_iso"] = to_utc_iso
 
 
 def render(

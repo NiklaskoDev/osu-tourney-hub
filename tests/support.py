@@ -183,6 +183,10 @@ class FakeWybin:
     def __init__(self) -> None:
         self.tournaments: dict[str, dict] = {}  # by slug
         self.mappools: dict[int, dict] = {}  # by wybin tournament id
+        self.matches: dict[int, dict] = {}  # by wybin tournament id
+        self.missing_kinds: set[str] = (
+            set()
+        )  # endpoints (e.g. "tournament-matches") that answer 404
         self.users: dict[int, dict] = {}  # by wybin user id
         self.requests: list[httpx.Request] = []
         self.failures: list[int] = []  # statuses returned (once each) before normal service
@@ -190,7 +194,10 @@ class FakeWybin:
         self.transport = httpx.MockTransport(self.handle)
 
     def load_defaults(self) -> None:
-        """The team tournament, the solo tournament, the pool and one user's sign-ups."""
+        """The team tournament, the solo tournament, the pool, matches and one user's sign-ups.
+
+        The team match fixture assumes `opponentOne`/`opponentTwo` are team objects: wybin's shape
+        for team matches is not confirmed (only 1v1 is), so that part is synthetic guesswork."""
         team = load_fixture("tournament_team")
         solo = load_fixture("tournament_solo")
         self.tournaments = {team["slug"]: team, solo["slug"]: solo}
@@ -198,6 +205,10 @@ class FakeWybin:
         self.mappools = {
             team["id"]: load_fixture("mappools"),
             solo["id"]: {"id": solo["id"], "stages": []},
+        }
+        self.matches = {
+            team["id"]: load_fixture("matches_team"),
+            solo["id"]: load_fixture("matches_solo"),
         }
         detail = load_fixture("user_detailed")
         self.users = {detail["id"]: detail}
@@ -220,6 +231,9 @@ class FakeWybin:
             found = self.tournaments.get(key)
         elif key.isdecimal() and kind == "tournament-mappools":
             found = self.mappools.get(int(key))
+        elif key.isdecimal() and kind == "tournament-matches" and kind not in self.missing_kinds:
+            # A tournament without match data answers an empty wrapper, like the real endpoint.
+            found = self.matches.get(int(key), {"id": int(key), "stages": []})
         elif key.isdecimal() and kind == "users-detailed":
             found = self.users.get(int(key))
         if found is None:
@@ -438,3 +452,66 @@ def add_score(
         ),
     )
     return int(cursor.lastrowid)
+
+
+def add_team(
+    db: sqlite3.Connection,
+    tournament_id: int,
+    name: str,
+    players: list[tuple] | None = None,
+    ours: bool = False,
+    wybin_team_id: int | None = None,
+) -> int:
+    """A team with `(osu_id, username[, timezone_iana[, offset_minutes]])` players. `ours` also
+    makes it the tournament's own team."""
+    cursor = db.execute(
+        "INSERT INTO teams (tournament_id, wybin_team_id, name, is_ours) VALUES (?, ?, ?, ?)",
+        (tournament_id, wybin_team_id, name, int(ours)),
+    )
+    team_id = int(cursor.lastrowid)
+    for player in players or []:
+        osu_id, username, *zone = player
+        iana, offset = (zone + [None, None])[:2]
+        db.execute(
+            "INSERT INTO team_players (team_id, osu_id, username, timezone_iana, "
+            "timezone_offset_min) VALUES (?, ?, ?, ?, ?)",
+            (team_id, osu_id, username, iana, offset),
+        )
+    if ours:
+        db.execute("UPDATE tournaments SET our_team_id = ? WHERE id = ?", (team_id, tournament_id))
+    return team_id
+
+
+def add_match(
+    db: sqlite3.Connection,
+    tournament_id: int,
+    team1_id: int | None,
+    team2_id: int | None,
+    scheduled_at: str | None,
+    stage_id: int | None = None,
+    label: str | None = None,
+    score1: int | None = None,
+    score2: int | None = None,
+    status: str = "scheduled",
+) -> int:
+    cursor = db.execute(
+        "INSERT INTO matches (tournament_id, stage_id, label, team1_id, team2_id, scheduled_at, "
+        "score1, score2, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "
+        "'2026-11-01T00:00:00Z')",
+        (tournament_id, stage_id, label, team1_id, team2_id, scheduled_at, score1, score2, status),
+    )
+    return int(cursor.lastrowid)
+
+
+def add_availability(
+    db: sqlite3.Connection,
+    tournament_id: int,
+    osu_id: int,
+    slots: list[str],
+    status: str = "yes",
+) -> None:
+    db.executemany(
+        "INSERT OR REPLACE INTO availability (tournament_id, osu_id, slot_start, status) "
+        "VALUES (?, ?, ?, ?)",
+        [(tournament_id, osu_id, slot, status) for slot in slots],
+    )

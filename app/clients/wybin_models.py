@@ -19,9 +19,13 @@ anonymous requests; the raw responses were not stored.
     beatmapOrder, name ("artist - title [difficulty]"), creator, mods (stable bitmask),
     starRating, bpm, totalLength, circleSize, approachRate, overallDifficulty, hpDrain,
     placeholder, customMap.
-`GET /api/v1/tournament-matches/{id}` and `/tournament-teams/{id}` answer with the same wrapper
-(matches under stages[].matches[], a plain team list); both were empty for the tournaments
-checked, so neither is read yet.
+`GET /api/v1/tournament-matches/{id}` answers with the same wrapper (matches under
+stages[].matches[]). Match fields confirmed for 1v1 tournaments only: id, label, playerOne,
+playerTwo, opponentOne, opponentTwo, date (epoch ms), time, opponentOneScore, opponentTwoScore,
+opponentOneBans[], opponentTwoBans[], multiplayerLink, rescheduled. What `playerOne` and
+`opponentOne` hold in a team tournament (a team object, probably) is NOT confirmed, so a side is
+read tolerantly: every `id` and osu! id found under `playerX` and `opponentX` is kept and the sync
+decides which team they name. `/tournament-teams/{id}` was empty and is not read.
 
 Not confirmed with a real response (paths and shapes from the plan only; parsed tolerantly):
 `GET /api/v1/tournament-mappools/{id}` (assumed to mirror the matches endpoint, with
@@ -44,6 +48,7 @@ MAX_TEXT_LENGTH = 200
 _TIMEZONE_OFFSET = re.compile(r"^(?:UTC|GMT)?\s*([+-])(\d{1,2})(?::?(\d{2}))?$", re.IGNORECASE)
 _MAP_NAME = re.compile(r"^(?P<artist>.+?) - (?P<title>.+) \[(?P<version>[^\[\]]*)\]$", re.DOTALL)
 MAX_OFFSET_MINUTES = 14 * 60
+MAX_LINK_LENGTH = 200
 
 
 class WybinError(Exception):
@@ -142,6 +147,30 @@ class WybinTournament:
 
 
 @dataclass(frozen=True)
+class WybinSide:
+    """One side of a match as wybin names it. `opponent_ids` and `player_ids` are the ids found
+    under `opponentX` and `playerX` (wybin team or player ids, whichever wybin used there);
+    `osu_ids` are osu! user ids of any player object. All may be empty (not decided yet)."""
+
+    opponent_ids: tuple[int, ...] = ()
+    player_ids: tuple[int, ...] = ()
+    osu_ids: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class WybinMatch:
+    wybin_match_id: int
+    wybin_stage_id: int | None
+    label: str | None
+    side1: WybinSide
+    side2: WybinSide
+    scheduled_at: str | None
+    score1: int | None
+    score2: int | None
+    multiplayer_link: str | None
+
+
+@dataclass(frozen=True)
 class WybinTournamentRef:
     """A tournament named by `participantTournaments`; either field may be missing."""
 
@@ -191,6 +220,26 @@ def parse_mappool_stages(data: object) -> dict[int, list[WybinBracket]]:
         if brackets is not None:
             pools[_require_int(stage, "id")] = _parse_brackets(brackets)
     return pools
+
+
+def parse_matches(data: object) -> list[WybinMatch]:
+    """Every match under `stages[].matches[]`. One match that cannot be read (no id) is skipped; a
+    list where none can be read means the shape changed."""
+    obj = _object(data, "matches")
+    matches: list[WybinMatch] = []
+    seen = skipped = 0
+    for stage_item in _list(obj.get("stages"), "stages"):
+        stage = _object(stage_item, "match stage")
+        stage_id = _int_or_none(stage.get("id"))
+        for item in _list(stage.get("matches"), "matches"):
+            seen += 1
+            try:
+                matches.append(_parse_match(item, stage_id))
+            except WybinFormatError:
+                skipped += 1
+    if seen and not matches:
+        raise WybinFormatError(f"none of {skipped} matches could be read")
+    return matches
 
 
 def parse_user_detail(data: object) -> WybinUserDetail:
@@ -302,6 +351,48 @@ def _parse_beatmap(item: object, position: int) -> WybinBeatmap:
         is_placeholder=obj.get("placeholder") is True or _int_or_none(obj.get("beatmapId")) is None,
         wybin_entry_id=_int_or_none(obj.get("id")),
     )
+
+
+def _parse_match(item: object, stage_id: int | None) -> WybinMatch:
+    obj = _object(item, "match")
+    link = obj.get("multiplayerLink")
+    return WybinMatch(
+        wybin_match_id=_require_int(obj, "id"),
+        wybin_stage_id=stage_id,
+        label=_text_or_none(obj.get("label")),
+        side1=_parse_side(obj.get("playerOne"), obj.get("opponentOne")),
+        side2=_parse_side(obj.get("playerTwo"), obj.get("opponentTwo")),
+        scheduled_at=ms_to_utc_iso(obj.get("date")),
+        score1=_score_or_none(obj.get("opponentOneScore")),
+        score2=_score_or_none(obj.get("opponentTwoScore")),
+        multiplayer_link=link.strip()[:MAX_LINK_LENGTH] if isinstance(link, str) else None,
+    )
+
+
+def _parse_side(player: object, opponent: object) -> WybinSide:
+    player_ids: list[int] = []
+    opponent_ids: list[int] = []
+    osu_ids: list[int] = []
+    for source, ids in ((player, player_ids), (opponent, opponent_ids)):
+        if isinstance(source, dict):
+            _collect(ids, _int_or_none(source.get("id")))
+            user = source.get("user")
+            osu = user.get("userOsu") if isinstance(user, dict) else source.get("userOsu")
+            if isinstance(osu, dict):
+                _collect(osu_ids, _int_or_none(osu.get("id")))
+        else:
+            _collect(ids, _int_or_none(source))
+    return WybinSide(tuple(opponent_ids), tuple(player_ids), tuple(osu_ids))
+
+
+def _collect(found: list[int], value: int | None) -> None:
+    if value is not None and value > 0 and value not in found:
+        found.append(value)
+
+
+def _score_or_none(value: object) -> int | None:
+    number = _int_or_none(value)
+    return number if number is not None and number >= 0 else None
 
 
 def _parse_team(item: object) -> WybinTeam:

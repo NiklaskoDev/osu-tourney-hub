@@ -1,0 +1,9 @@
+{% extends "layout/tournament.html" %}
+{% block title %}Best times - {{ tournament.name }} - {% endblock %}
+{% block tournament_content %}
+<div class="page__header">
+  <h1>Find a slot</h1>
+  <p class="muted"><a href="/t/{{ tournament.id }}/schedule">Back to the schedule</a></p>
+</div>
+{% include "partials/slots.html" %}
+{% endblock %}

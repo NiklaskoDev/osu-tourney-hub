@@ -114,7 +114,7 @@ SQLite file `/data/app.db` (`DATA_DIR` env, default `/data`). Times stored as UT
 - `capture_log(osu_id INTEGER, beatmap_id INTEGER, gamemode INTEGER, last_pulled_at, PRIMARY KEY(osu_id, beatmap_id, gamemode))` — skip re-pulls inside `CAPTURE_REFRESH_HOURS`.
 
 `0005_schedule.sql` (phase 5)
-- `matches(id INTEGER PK, tournament_id REFERENCES tournaments, stage_id REFERENCES stages, wybin_match_id INTEGER UNIQUE, label TEXT, team1_id INTEGER REFERENCES teams, team2_id INTEGER REFERENCES teams, scheduled_at TEXT, score1 INTEGER, score2 INTEGER, mp_match_id INTEGER, status TEXT NOT NULL CHECK(status IN ('scheduled','live','done','cancelled')), updated_at)`, index `(tournament_id, scheduled_at)`.
+- `matches(id INTEGER PK, tournament_id REFERENCES tournaments, stage_id REFERENCES stages, wybin_match_id INTEGER UNIQUE, label TEXT, team1_id INTEGER REFERENCES teams, team2_id INTEGER REFERENCES teams, scheduled_at TEXT, score1 INTEGER, score2 INTEGER, mp_match_id INTEGER, status TEXT NOT NULL CHECK(status IN ('scheduled','live','done')), updated_at)`, index `(tournament_id, scheduled_at)`. (`cancelled` was dropped in phase 5: a sync only adds or refreshes matches, so nothing would ever write it.)
 - `availability(tournament_id REFERENCES tournaments, osu_id INTEGER NOT NULL, slot_start TEXT NOT NULL /* UTC, 30-min aligned */, status TEXT NOT NULL CHECK(status IN ('yes','maybe','no')), PRIMARY KEY(tournament_id, osu_id, slot_start))`
 
 `0006_lobbies.sql` (phase 6)
@@ -309,6 +309,7 @@ Each phase is one branch `feat/<phase-slug>`, one PR, ends with tests, ruff clea
 4. Tests: API score mapping (mods objects, acc ×100, misses key variants), dedupe by score id, queue respects refresh window and priorities, 404 map → empty no error, rate limiter never exceeds budget with FakeClock; CSV export headers/rows exact; import rejects > 1 MB, unknown players listed, re-import adds nothing; Sheets link with other host rejected.
 
 ### Phase 5 — availability, schedule, best slot, iCal (`feat/schedule`)
+Note: best slots are computed on demand from `availability` and the opponents' timezones; there is no `best_slots` table.
 1. `0005_schedule.sql`; matches sync from wybin (`date` ms → UTC; teams via player/opponent objects; `multiplayerLink` → `mp_match_id`; score fields).
 2. `/t/{tid}/availability`: week grid (rows = 30-min slots, columns = members), toggle UTC/local (local = user's timezone from `/me`, fallback browser); cells stored in UTC; matches overlay as a labelled band across the row; summary column "available: n / lineup size". Keyboard and drag-select range (htmx POST with range).
 3. `/t/{tid}/schedule`: upcoming matches with countdown and opponent; past matches with result; "Find a slot" per match → `best_slots` table with our availability count and opponents' local times.

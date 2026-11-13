@@ -39,6 +39,10 @@ NOT_FROM_WYBIN_MESSAGE = "This tournament did not come from wybin."
 POOLS_UNREADABLE_WARNING = (
     "Teams and stages were updated; the map pool could not be read. Try syncing again later."
 )
+MATCHES_UNREADABLE_WARNING = (
+    "Teams, stages and the map pool were updated; the matches could not be read. "
+    "Try syncing again later."
+)
 ARCHIVED_SYNC_MESSAGE = "This tournament is archived. Restore it before syncing."
 STATUS_LABELS = {"active": "Active", "archived": "Archived", "hidden": "Hidden"}
 
@@ -172,6 +176,8 @@ async def import_from_wybin(
         tournament = _tournament(db, result.tournament_id)
         if result.pools_unreadable:
             flash(request, "warning", POOLS_UNREADABLE_WARNING)
+        elif result.matches_unreadable:
+            flash(request, "warning", MATCHES_UNREADABLE_WARNING)
         else:
             verb = "imported" if result.created else "was already imported and is up to date"
             flash(request, "success", f"{tournament.name} {verb}.")
@@ -287,6 +293,8 @@ async def sync_now(
         return _page(request, user, db, status, action_error=message)
     if result.pools_unreadable:
         flash(request, "warning", POOLS_UNREADABLE_WARNING)
+    elif result.matches_unreadable:
+        flash(request, "warning", MATCHES_UNREADABLE_WARNING)
     else:
         flash(request, "success", f"{_tournament(db, tid).name} is up to date with wybin.")
     return RedirectResponse("/admin", status_code=303)

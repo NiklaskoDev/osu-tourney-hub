@@ -142,6 +142,23 @@ def test_a_lazer_score_counts_on_a_v2_tournament_and_is_marked(client, login, db
     assert "close to ScoreV2 but not the same" in page
 
 
+def test_the_per_map_detail_row_marks_only_the_lazer_score(client, login, db, cup):
+    add_score(db, 1001, PLAYER, 990_000, scoring="lazer", source="api")
+    add_score(db, 1001, PLAYER, 800_000, scoring="v2")
+    login(PLAYER)
+
+    details = client.get(f"/t/{cup['id']}/pool").text.split("Scores and notes per map")[1]
+    rows = [r for r in details.split("<tr>") if "990,000" in r or "800,000" in r]
+
+    lazer_row = next(r for r in rows if "990,000" in r)
+    v2_row = next(r for r in rows if "800,000" in r)
+    assert (
+        '<span class="old-flag" title="Lazer standardised score from osu!, not ScoreV2">lazer'
+        in (lazer_row)
+    )
+    assert "lazer</span>" not in v2_row
+
+
 def test_a_real_v2_score_is_not_marked_lazer(client, login, db, cup):
     add_score(db, 1001, PLAYER, 800_000, scoring="v2")
     login(PLAYER)

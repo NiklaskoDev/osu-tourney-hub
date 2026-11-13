@@ -5,6 +5,8 @@
   ("overview", "Overview", "/t/" ~ tournament.id),
   ("pool", "Pool", "/t/" ~ tournament.id ~ "/pool"),
   ("lineup", "Lineup", "/t/" ~ tournament.id ~ "/lineup"),
+  ("availability", "Availability", "/t/" ~ tournament.id ~ "/availability"),
+  ("schedule", "Schedule", "/t/" ~ tournament.id ~ "/schedule"),
   ("members", "Members", "/t/" ~ tournament.id ~ "/members"),
 ] %}
 {% if access.can_manage %}{% set items = items + [("settings", "Settings", "/t/" ~ tournament.id ~ "/settings")] %}{% endif %}

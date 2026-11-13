@@ -1,0 +1,110 @@
+{
+  "id": 9001,
+  "stages": [
+    {
+      "id": 701,
+      "name": "Qualifiers",
+      "matches": [
+        {
+          "id": 5004,
+          "label": "Qualifier decider",
+          "playerOne": null,
+          "playerTwo": null,
+          "opponentOne": {
+            "id": 801,
+            "name": "Alpha Squad"
+          },
+          "opponentTwo": {
+            "id": 802,
+            "name": "Rival Crew"
+          },
+          "date": 1794333600000,
+          "time": "18:00",
+          "opponentOneScore": 5,
+          "opponentTwoScore": 3,
+          "opponentOneBans": [],
+          "opponentTwoBans": [],
+          "multiplayerLink": "https://osu.ppy.sh/community/matches/100200300",
+          "rescheduled": false
+        }
+      ]
+    },
+    {
+      "id": 702,
+      "name": "Round of 16",
+      "matches": [
+        {
+          "id": 5001,
+          "label": "R16 M1",
+          "playerOne": null,
+          "playerTwo": null,
+          "opponentOne": {
+            "id": 801,
+            "name": "Alpha Squad"
+          },
+          "opponentTwo": {
+            "id": 802,
+            "name": "Rival Crew"
+          },
+          "date": 1796558400000,
+          "time": "12:00",
+          "opponentOneScore": null,
+          "opponentTwoScore": null,
+          "opponentOneBans": [],
+          "opponentTwoBans": [],
+          "multiplayerLink": null,
+          "rescheduled": false
+        },
+        {
+          "id": 5002,
+          "label": "R16 M2",
+          "playerOne": null,
+          "playerTwo": null,
+          "opponentOne": {
+            "id": 803,
+            "name": "Third Wheel"
+          },
+          "opponentTwo": {
+            "id": 801,
+            "name": "Alpha Squad"
+          },
+          "date": 1796671800000,
+          "time": "19:30",
+          "opponentOneScore": 0,
+          "opponentTwoScore": 0,
+          "opponentOneBans": [],
+          "opponentTwoBans": [],
+          "multiplayerLink": null,
+          "rescheduled": false
+        },
+        {
+          "id": 5003,
+          "label": "R16 M3",
+          "playerOne": null,
+          "playerTwo": null,
+          "opponentOne": {
+            "id": 802,
+            "name": "Rival Crew"
+          },
+          "opponentTwo": {
+            "id": 803,
+            "name": "Third Wheel"
+          },
+          "date": null,
+          "time": null,
+          "opponentOneScore": null,
+          "opponentTwoScore": null,
+          "opponentOneBans": [],
+          "opponentTwoBans": [],
+          "multiplayerLink": null,
+          "rescheduled": false
+        }
+      ]
+    },
+    {
+      "id": 703,
+      "name": "Finals",
+      "matches": []
+    }
+  ]
+}

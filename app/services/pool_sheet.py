@@ -3,6 +3,7 @@ map, averages, and the suggested lineup. Loads from the repos and uses the pure 
 `sheet` and `lineup`."""
 
 import sqlite3
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -144,9 +145,12 @@ def load_stage(conn: sqlite3.Connection, tournament: Tournament, stage: Stage) -
 
 
 def suggest_for_stage(
-    data: StageData, tournament: Tournament, include_substitutes: bool
+    data: StageData,
+    tournament: Tournament,
+    include_substitutes: bool,
+    available_ids: Collection[int] | None = None,
 ) -> dict[int, lineup.MapSuggestion]:
-    players = lineup.eligible_players(data.players, include_substitutes)
+    players = lineup.eligible_players(data.players, include_substitutes, available_ids)
     size = effective_lineup_size(data.stage, tournament)
     return lineup.suggest(data.pool, data.best, players, size, tournament.freemod_rule)
 

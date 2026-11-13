@@ -1,0 +1,91 @@
+{
+  "id": 9002,
+  "stages": [
+    {
+      "id": 711,
+      "name": "Qualifiers",
+      "matches": [
+        {
+          "id": 6001,
+          "label": "Q1",
+          "playerOne": {
+            "id": 11,
+            "user": {
+              "id": 100011,
+              "slug": "adminamy",
+              "username": "AdminAmy",
+              "userOsu": {
+                "id": 1001,
+                "username": "AdminAmy",
+                "flag": "DE"
+              }
+            }
+          },
+          "playerTwo": {
+            "id": 21,
+            "user": {
+              "id": 100021,
+              "slug": "rivalrex",
+              "username": "RivalRex",
+              "userOsu": {
+                "id": 4001,
+                "username": "RivalRex",
+                "flag": "DE"
+              }
+            }
+          },
+          "opponentOne": 11,
+          "opponentTwo": 21,
+          "date": 1796558400000,
+          "time": "12:00",
+          "opponentOneScore": null,
+          "opponentTwoScore": null,
+          "opponentOneBans": [],
+          "opponentTwoBans": [],
+          "multiplayerLink": null,
+          "rescheduled": false
+        },
+        {
+          "id": 6002,
+          "label": "Q2",
+          "playerOne": {
+            "id": 12,
+            "user": {
+              "id": 100012,
+              "slug": "captaincarl",
+              "username": "CaptainCarl",
+              "userOsu": {
+                "id": 3001,
+                "username": "CaptainCarl",
+                "flag": "DE"
+              }
+            }
+          },
+          "playerTwo": {
+            "id": 21,
+            "user": {
+              "id": 100021,
+              "slug": "rivalrex",
+              "username": "RivalRex",
+              "userOsu": {
+                "id": 4001,
+                "username": "RivalRex",
+                "flag": "DE"
+              }
+            }
+          },
+          "opponentOne": 12,
+          "opponentTwo": 21,
+          "date": 1794333600000,
+          "time": "18:00",
+          "opponentOneScore": 2,
+          "opponentTwoScore": 1,
+          "opponentOneBans": [],
+          "opponentTwoBans": [],
+          "multiplayerLink": "100200301",
+          "rescheduled": true
+        }
+      ]
+    }
+  ]
+}

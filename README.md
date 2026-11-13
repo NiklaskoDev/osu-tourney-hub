@@ -64,6 +64,8 @@ limit on the login routes and the secure-cookie handling. Do not publish the por
 your LAN: on Unraid use a custom Docker network shared with the proxy, or bind it to the proxy host
 only (`-p 127.0.0.1:8080:8080`).
 
+The reverse proxy must buffer request bodies (nginx does by default). The app refuses a form post that has no `Content-Length`, which is what a streamed (chunked) body looks like, with `411 Length Required`.
+
 ### Backup and a single process
 
 All state lives in `/data` (`app.db`, plus `app.db-wal` and `app.db-shm` while running). Back up that
@@ -95,6 +97,25 @@ it from everyone but administrators.
 The app reads wybin anonymously and only reads: at most one request every `WYBIN_MIN_INTERVAL_SECONDS`
 seconds, and nothing is ever written back. wybin has no published API terms, so its response
 format may change; the Admin page then shows a failed job and keeps the stored data.
+
+## Availability, schedule and calendar
+
+Every sync of a wybin tournament also reads its matches. The Availability page shows one week with a
+row per 30-minute slot and a column per player, in UTC or in your own timezone (saved on your
+profile, else the browser's). Slots are stored in UTC, so everyone sees the same instants. Click a
+slot to cycle Yes, Maybe and No, or drag down your own column (or hold Shift with the arrow keys
+and press Space) to set a range; captains can edit anyone's column. A slot with no answer counts as
+No. Your team's matches are shaded and last 90 minutes for planning.
+
+The Schedule page lists upcoming and played matches. "Find a slot" suggests start times in the next
+two weeks: a player counts when they answered Yes for the whole match (Maybe counts half), and a
+start is marked down for each opponent for whom it falls outside 10:00 to 23:00 local time
+(opponent timezones come from wybin). The Lineup page can keep only players available at a match.
+
+On your profile, "Create calendar link" makes a private `.ics` address for your calendar app with
+your team's matches. Anyone with the address can read it, it is shown once, and you can revoke it
+or replace it at any time. Keep the reverse proxy from logging the full request path of
+`/feeds/...` if you can; the app itself logs it as `/feeds/<redacted>.ics`.
 
 ## Scores from osu!, CSV export and import
 

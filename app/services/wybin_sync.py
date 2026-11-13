@@ -17,6 +17,7 @@ from app.clients.wybin_models import (
     WybinBracket,
     WybinError,
     WybinFormatError,
+    WybinMatch,
     WybinNotFound,
     WybinPlayer,
     WybinStage,
@@ -43,6 +44,7 @@ from app.repos import tournaments as tournaments_repo
 from app.repos import users as users_repo
 from app.repos import wybin_links as links_repo
 from app.repos.teams import PlayerValues
+from app.services.match_sync import apply_matches
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,8 @@ class SyncResult:
     created: bool
     # True when the mappool endpoint could not be read, so pools were not refreshed.
     pools_unreadable: bool = False
+    # Likewise for the matches endpoint.
+    matches_unreadable: bool = False
 
 
 @dataclass(frozen=True)
@@ -92,7 +96,10 @@ async def import_tournament(
         raise TournamentArchivedError(slug)
     data = await wybin.get_tournament(slug)
     pools, readable = await _fetch_pools(wybin, data)
-    return _apply(conn, data, pools, importer_osu_id, clock.now(), archive_if_ended, readable)
+    matches = await _fetch_matches(wybin, data)
+    return _apply(
+        conn, data, pools, matches, importer_osu_id, clock.now(), archive_if_ended, readable
+    )
 
 
 async def sync_tournament(
@@ -104,7 +111,8 @@ async def sync_tournament(
         raise LookupError("not a wybin tournament")
     data = await wybin.get_tournament(tournament.slug)
     pools, readable = await _fetch_pools(wybin, data)
-    return _apply(conn, data, pools, tournament.owner_osu_id, clock.now(), False, readable)
+    matches = await _fetch_matches(wybin, data)
+    return _apply(conn, data, pools, matches, tournament.owner_osu_id, clock.now(), False, readable)
 
 
 async def sync_active(conn: sqlite3.Connection, wybin: WybinClient, clock: Clock) -> int:
@@ -113,7 +121,7 @@ async def sync_active(conn: sqlite3.Connection, wybin: WybinClient, clock: Clock
     Tournaments wybin could not be read for, and tournaments whose pool could not be refreshed
     (the rest of their data was), are counted and reported at the end as `WybinSyncError`, so the
     job state shows the problem."""
-    failed = pools_unreadable = 0
+    failed = pools_unreadable = matches_unreadable = 0
     tournaments = tournaments_repo.list_syncable(conn)
     for tournament in tournaments:
         try:
@@ -125,11 +133,14 @@ async def sync_active(conn: sqlite3.Connection, wybin: WybinClient, clock: Clock
             failed += 1
         else:
             pools_unreadable += result.pools_unreadable
+            matches_unreadable += result.matches_unreadable
     problems = []
     if failed:
         problems.append(f"wybin could not be read for {failed} of {len(tournaments)} tournaments")
     if pools_unreadable:
         problems.append(f"the map pool could not be updated for {pools_unreadable}")
+    if matches_unreadable:
+        problems.append(f"the matches could not be updated for {matches_unreadable}")
     if problems:
         raise WybinSyncError("; ".join(problems) + ". Nothing was changed for what failed.")
     return len(tournaments)
@@ -141,7 +152,7 @@ async def track_signups(conn: sqlite3.Connection, wybin: WybinClient, clock: Clo
     Anything already in the database counts as known, hidden ones included, so a tournament an
     admin hid is never brought back; the same goes for tournaments an admin deleted.
     """
-    imported = failed = pools_unreadable = 0
+    imported = failed = pools_unreadable = matches_unreadable = 0
     for link in links_repo.list_all(conn):
         try:
             detail = await wybin.get_user_detailed(link.wybin_user_id)
@@ -162,12 +173,15 @@ async def track_signups(conn: sqlite3.Connection, wybin: WybinClient, clock: Clo
             else:
                 imported += 1
                 pools_unreadable += result.pools_unreadable
+                matches_unreadable += result.matches_unreadable
         links_repo.mark_checked(conn, link.osu_id, to_utc_iso(clock.now()))
     problems = []
     if failed:
         problems.append(f"{failed} wybin requests failed while checking sign-ups")
     if pools_unreadable:
         problems.append(f"the map pool could not be read for {pools_unreadable} imported")
+    if matches_unreadable:
+        problems.append(f"the matches could not be read for {matches_unreadable} imported")
     if problems:
         raise WybinSyncError("; ".join(problems) + ".")
     return TrackResult(imported)
@@ -197,10 +211,22 @@ async def _fetch_pools(
     return pools, True
 
 
+async def _fetch_matches(wybin: WybinClient, data: WybinTournament) -> list[WybinMatch] | None:
+    """The tournament's matches, or None when the endpoint is missing or not understood (the
+    stored matches then stay as they are and the caller reports it). A temporary wybin outage
+    still fails the sync."""
+    try:
+        return await wybin.get_matches(data.wybin_id)
+    except (WybinNotFound, WybinFormatError) as error:
+        logger.warning("wybin matches unusable for tournament %s: %s", data.wybin_id, error)
+        return None
+
+
 def _apply(
     conn: sqlite3.Connection,
     data: WybinTournament,
     pools: dict[int, list[WybinBracket]],
+    matches: list[WybinMatch] | None,
     importer_osu_id: int | None,
     now: datetime,
     archive_if_ended: bool,
@@ -243,7 +269,9 @@ def _apply(
             _apply_stage(conn, tournament_id, data.gamemode, stage, sort_order, pools)
         profiles = _apply_teams(conn, tournament_id, data)
         _assign_our_team(conn, tournament_id, importer_osu_id, data.is_solo, profiles, stamp)
-    return SyncResult(tournament_id, existing is None, not pools_readable)
+        if matches is not None:
+            apply_matches(conn, tournament_id, data.is_solo, matches, stamp)
+    return SyncResult(tournament_id, existing is None, not pools_readable, matches is None)
 
 
 def _has_ended(data: WybinTournament, now: datetime) -> bool:

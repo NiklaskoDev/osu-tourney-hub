@@ -72,12 +72,19 @@ def test_availability_states_are_labelled_with_text(admin_page):
         )
 
 
+def test_availability_cells_expose_whose_slot_and_which_state_to_assistive_tech(admin_page):
+    assert 'aria-label="Mon 16 Nov 18:00: Yes"' in admin_page
+    assert 'aria-label="Mon 16 Nov 18:30: Maybe"' in admin_page
+    assert 'aria-label="Mon 16 Nov 19:00: No"' in admin_page
+
+
 def test_static_assets_are_served(client):
     assert "--accent" in client.get("/static/css/tokens.css").text
     assert client.get("/static/css/app.css").status_code == 200
     assert client.get("/static/js/htmx.min.js").status_code == 200
     assert client.get("/static/js/htmx-ext-sse.js").status_code == 200
     assert client.get("/static/js/app.js").status_code == 200
+    assert client.get("/static/js/availability.js").status_code == 200
     assert "<symbol" in client.get("/static/icons/sprite.svg").text
 
 

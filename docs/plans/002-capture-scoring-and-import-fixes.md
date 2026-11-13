@@ -207,6 +207,8 @@ Out of scope:
 3. (a): refuse unsafe requests without `Content-Length` with 411.
 4. The `x-api-version` fix stays in this plan.
 
+Implementation note (2026-11-13): the body-size guard became `RequestBodyLimitMiddleware` in `app/web/security.py` instead of a call in `require_csrf`, because FastAPI parses a route's form fields before any dependency runs, so a dependency would come after Starlette had already buffered the body.
+
 Minor choice already made: the wybin sync job queues pulls only after a successful sync, rather than guarding the `finally`. The hourly enqueue job covers a failed sync, and this is simpler.
 
 ## Risks / follow-ups

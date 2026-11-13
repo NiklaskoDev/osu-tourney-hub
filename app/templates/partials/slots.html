@@ -1,0 +1,42 @@
+{#- The best start times for one match. Used as an htmx fragment on the schedule page and inside
+    the standalone slots page. -#}
+{% from "components/countdown.html" import local_time %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/table.html" import table %}
+{% set view = search.view %}
+<section class="stack" aria-labelledby="slots-heading">
+  <h2 id="slots-heading">Best times against {{ view.opponent_name }}</h2>
+  <p class="muted">From {{ local_time(search.window_start|utc_iso) }} to {{ local_time(search.window_end|utc_iso) }}. A start is scored by how many of the {{ search.lineup_size }} {{ "player" if search.lineup_size == 1 else "players" }} per map are free for the whole match (Yes counts 2, Maybe 1), minus 1 for every opponent for whom it falls outside 10:00 to 23:00 on their clock. {{ search.players }} {{ "player is" if search.players == 1 else "players are" }} counted; substitutes are not.</p>
+  {% if search.slots %}
+  {% call table("Best start times against " ~ view.opponent_name) %}
+  <thead>
+    <tr>
+      <th scope="col">Start (UTC)</th>
+      <th scope="col">Your time</th>
+      <th scope="col" class="is-numeric">Free</th>
+      <th scope="col" class="is-numeric">Score</th>
+      <th scope="col">Their local times</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for slot in search.slots %}
+    <tr>
+      <th scope="row">{{ slot.start.strftime("%a %d %b %H:%M") }}</th>
+      <td>{{ local_time(slot.start|utc_iso) }}</td>
+      <td class="is-numeric">{{ slot.yes }} yes{% if slot.maybe %}, {{ slot.maybe }} maybe{% endif %} <span class="muted">of {{ slot.lineup_size }}</span></td>
+      <td class="is-numeric">{{ slot.score }}</td>
+      <td>
+        <ul class="picks">
+          {% for opponent in slot.opponents %}
+          <li>{{ opponent.name }}: {% if opponent.local_time %}{{ opponent.local_time }} <span class="muted">({{ opponent.zone_label }})</span>{% if opponent.outside %} <strong>outside 10:00 to 23:00</strong>{% endif %}{% else %}<span class="muted">timezone unknown</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  {% else %}
+  {{ empty_state("No start in this period has a player free for the whole match. Ask players to fill in the Availability page, then try again.") }}
+  {% endif %}
+</section>

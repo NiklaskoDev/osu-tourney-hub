@@ -11,6 +11,7 @@
   <script src="/static/js/htmx.min.js?v={{ app_version }}" defer></script>
   <script src="/static/js/htmx-ext-sse.js?v={{ app_version }}" defer></script>
   <script src="/static/js/app.js?v={{ app_version }}" defer></script>
+  {% block head_scripts %}{% endblock %}
 </head>
 <body{% if csrf_token %} hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'{% endif %}>
   {% block body %}{% endblock %}

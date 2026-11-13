@@ -1,0 +1,5 @@
+{#- The answer to saving a range: a status line for the live region, and the changed rows, which
+    htmx swaps into the grid. Table rows travel inside <template> so the browser keeps them. -#}
+{% from "partials/availability_row.html" import slot_row %}
+{{ message }}
+<template>{% for row in rows %}{{ slot_row(row, columns, editable_id, lineup_size, archived, oob=true) }}{% endfor %}</template>

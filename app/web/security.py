@@ -1,5 +1,7 @@
 """Security response headers, CSRF protection and the small per-IP rate limiter."""
 
+import logging
+import re
 import secrets
 from collections import deque
 from datetime import datetime, timedelta
@@ -25,6 +27,25 @@ CONTENT_SECURITY_POLICY = (
     "form-action 'self' https://osu.ppy.sh"
 )
 HSTS_VALUE = "max-age=31536000"
+
+
+_FEED_PATH = re.compile(r"/feeds/[^/?\s]+\.ics")
+FEED_PATH_REDACTED = "/feeds/<redacted>.ics"
+
+
+class RedactFeedTokens(logging.Filter):
+    """Keeps calendar feed tokens out of the access log: the token is the whole credential and
+    sits in the URL path, so the path is logged as `/feeds/<redacted>.ics`."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                _FEED_PATH.sub(FEED_PATH_REDACTED, arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        if isinstance(record.msg, str):
+            record.msg = _FEED_PATH.sub(FEED_PATH_REDACTED, record.msg)
+        return True
 
 
 class SecurityHeadersMiddleware:

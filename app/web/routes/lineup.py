@@ -11,7 +11,7 @@ from app.domain.models import Role, Stage
 from app.domain.parsing import parse_uint
 from app.repos import lineups as lineups_repo
 from app.repos import stages as stages_repo
-from app.services import lineup_edit, pool_sheet
+from app.services import lineup_edit, pool_sheet, schedule
 from app.services.lineup_edit import LineupError, LineupForm
 from app.services.tournament_settings import SCORING_LABELS, effective_lineup_size
 from app.web.deps import (
@@ -35,13 +35,15 @@ def _page(
     db: sqlite3.Connection,
     stage_ref: str | None,
     include_substitutes: bool,
+    only_available: bool = False,
+    match_ref: str | None = None,
     status_code: int = 200,
     **extra: Any,
 ) -> HTMLResponse:
     tournament = access.tournament
     stages = stages_repo.list_for_tournament(db, tournament.id)
     stage = pool_sheet.pick_stage(stages, stage_ref)
-    suffix = "&subs=1" if include_substitutes else ""
+    suffix = ("&subs=1" if include_substitutes else "") + ("&avail=1" if only_available else "")
     context: dict[str, Any] = {
         "access": access,
         "tournament": tournament,
@@ -62,19 +64,35 @@ def _page(
         **extra,
     }
     if stage is not None:
-        context.update(_stage_context(db, access, stage, include_substitutes, context))
+        context.update(
+            _stage_context(
+                request, db, access, stage, include_substitutes, only_available, match_ref, context
+            )
+        )
     return render(request, "pages/tournament/lineup.html", context, status_code=status_code)
 
 
 def _stage_context(
+    request: Request,
     db: sqlite3.Connection,
     access: TournamentAccess,
     stage: Stage,
     include_substitutes: bool,
+    only_available: bool,
+    match_ref: str | None,
     context: dict[str, Any],
 ) -> dict[str, Any]:
     tournament = access.tournament
     data = pool_sheet.load_stage(db, tournament, stage)
+    availability_filter = schedule.lineup_filter(
+        db,
+        tournament,
+        stage,
+        data.players,
+        request.app.state.clock.now(),
+        match_ref,
+        only_available,
+    )
     names = {p.osu_id: p.username or f"osu! user {p.osu_id}" for p in data.players}
     size = effective_lineup_size(stage, tournament)
     saved = lineups_repo.get_for_stage(db, stage.id)
@@ -92,7 +110,18 @@ def _stage_context(
     return {
         "pool": data.pool,
         "lineup_size": size,
-        "suggestions": pool_sheet.suggest_for_stage(data, tournament, include_substitutes),
+        "suggestions": pool_sheet.suggest_for_stage(
+            data, tournament, include_substitutes, availability_filter.available_ids
+        ),
+        "availability_filter": availability_filter,
+        "match_options": [
+            (str(view.match.id), f"{view.opponent_name}, {view.start_text}")
+            for view in availability_filter.matches
+        ],
+        "match_value": str(availability_filter.selected.match.id)
+        if availability_filter.selected
+        else "",
+        "only_available": availability_filter.enabled,
         "saved": saved,
         "slots": slots,
         "names": names,
@@ -117,10 +146,12 @@ async def lineup_page(
     request: Request,
     stage: str | None = None,
     subs: str = "",
+    avail: str = "",
+    match: str = "",
     access: TournamentAccess = Depends(member_access),
     db: sqlite3.Connection = Depends(get_db),
 ) -> HTMLResponse:
-    return _page(request, access, db, stage, subs == "1")
+    return _page(request, access, db, stage, subs == "1", avail == "1", match)
 
 
 @router.post("/copy-suggestion")
@@ -128,6 +159,8 @@ async def copy_suggestion(
     request: Request,
     stage: str = Form(""),
     include_substitutes: str = Form(""),
+    avail: str = Form(""),
+    match: str = Form(""),
     access: TournamentAccess = Depends(captain_access),
     _writable: TournamentAccess = Depends(require_writable),
     db: sqlite3.Connection = Depends(get_db),
@@ -138,12 +171,17 @@ async def copy_suggestion(
         return error_page(request, 404, "This stage is not in this tournament.")
     with_substitutes = include_substitutes == "1"
     data = pool_sheet.load_stage(db, access.tournament, chosen)
-    suggestions = pool_sheet.suggest_for_stage(data, access.tournament, with_substitutes)
+    availability_filter = schedule.lineup_filter(
+        db, access.tournament, chosen, data.players, clock.now(), match, avail == "1"
+    )
+    suggestions = pool_sheet.suggest_for_stage(
+        data, access.tournament, with_substitutes, availability_filter.available_ids
+    )
     lineup_edit.copy_suggestion(
         db, access.tournament, chosen, suggestions, access.user.osu_id, clock.now()
     )
     flash(request, "success", "Suggested lineup copied. It is saved as a draft you can edit.")
-    return _back(access.tournament.id, chosen.id, with_substitutes)
+    return _back(access.tournament.id, chosen.id, with_substitutes, avail == "1", match)
 
 
 @router.post("")
@@ -157,6 +195,8 @@ async def save_lineup(
     fields = await request.form()
     values = {key: value for key, value in fields.items() if isinstance(value, str)}
     include_substitutes = values.get("include_substitutes") == "1"
+    only_available = values.get("avail") == "1"
+    match_ref = values.get("match", "")
     chosen = _stage_or_none(db, access.tournament.id, values.get("stage", ""))
     if chosen is None:
         return error_page(request, 404, "This stage is not in this tournament.")
@@ -173,15 +213,24 @@ async def save_lineup(
             db,
             str(chosen.id),
             include_substitutes,
+            only_available,
+            match_ref,
             refused.status,
             form_values=values,
             form_error=refused.message,
             form_error_field=refused.field,
         )
     flash(request, "success", "Lineup saved.")
-    return _back(access.tournament.id, chosen.id, include_substitutes)
+    return _back(access.tournament.id, chosen.id, include_substitutes, only_available, match_ref)
 
 
-def _back(tid: int, stage_id: int, include_substitutes: bool) -> RedirectResponse:
+def _back(
+    tid: int, stage_id: int, include_substitutes: bool, only_available: bool, match_ref: str
+) -> RedirectResponse:
     suffix = "&subs=1" if include_substitutes else ""
+    if only_available:
+        suffix += "&avail=1"
+        match_id = parse_uint(match_ref)
+        if match_id is not None:
+            suffix += f"&match={match_id}"
     return RedirectResponse(f"/t/{tid}/lineup?stage={stage_id}{suffix}", status_code=303)

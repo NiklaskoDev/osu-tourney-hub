@@ -21,7 +21,6 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - Active wybin tournaments are updated every `WYBIN_POLL_MINUTES`; a failed sync keeps the stored data and shows a generic error on the Admin page. New setting `WYBIN_MIN_INTERVAL_SECONDS` spaces the requests to wybin.
 - Tournament overview shows game mode, team format, our team, stages with their format and whether the pool is published. New Settings page for captains: scoring type, freemod rule and lineup size per stage; administrators also set our team and the final placing.
 - Game modes: mod tables per mode (osu!, taiko, catch, mania incl. key mods) for required mods on map slots.
-- Not in this version: importing matches and schedules from wybin. It arrives with the match schedule in a later phase (the tables for it do not exist yet).
 - An archived tournament is never rewritten by an import or sync, a deleted wybin tournament is not imported again automatically (an admin can still import it by hand), and a re-synced map pool keeps each map's row when wybin reorders it.
 - A failed or partial wybin job, including an unreadable map pool endpoint, shows on the Admin page with how many tournaments it affected.
 - Importing or syncing a tournament whose map pool cannot be read now shows a warning instead of plain success.
@@ -32,7 +31,15 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - "Refresh my scores" on the Pool page pulls your own scores at once (once per 10 minutes); captains can pull every player of a team (`POST /t/{id}/opponents/{team}/capture`, once per team per hour; the button comes with the match pages).
 - Pool page: "Export CSV" (best score per player and map) for everyone on the roster, and the Lineup page exports the saved lineup. Cells that look like spreadsheet formulas are exported as text.
 - Import scores (captains): upload a CSV file (1 MB, 5000 rows, UTF-8) or paste a public Google Sheets link. A preview shows the detected columns, which rows will be imported and which are refused and why; scores already on the sheet are skipped, so importing twice adds nothing. Only docs.google.com and the download address Google redirects it to are ever contacted.
-- Not in this version: the automatic pull for the next scheduled opponent and the availability export; both need the match and availability tables of the schedule phase.
+- Matches from wybin (migration 0005): every sync also stores the tournament's matches with their teams, stage, time, result and lobby link. Team-tournament match data is read tolerantly because its shape on wybin is not confirmed; if the matches cannot be read the stored ones stay and the sync warns.
+- Availability page: a week grid with a row per 30-minute slot and a column per player, shown in UTC or in your own timezone (daylight-saving changes included). Click a slot to cycle Yes, Maybe, No, drag down your column or use Shift with the arrow keys to set a range; captains can edit anyone's row. Our matches are shaded across their rows, and each row counts how many players are free against the lineup size. Slots are read aloud with whose they are, the time and the answer.
+- Schedule page: upcoming matches with opponent, start time and countdown, played matches with the result, "Find a slot" (best start times in the next two weeks by who is free for the whole match, with the opponents' local times and a penalty outside 10:00 to 23:00) and "Pull scores" for the opponent.
+- Calendar feed: create a private `.ics` link on your profile (shown once, only its hash is stored, revocable) that lists your team's matches; its address is kept out of the access log.
+- Lineup page: "Only players available at match time" keeps players who answered Yes for the whole of the chosen match.
+- Scores of the next opponent's players are pulled automatically, after our own roster.
+- Availability CSV export (`/t/<id>/export/availability.csv`); availability is part of "Download my data" and "Delete my data", and leaves with a member who is removed.
+- The Pool page's per-map score list marks lazer scores like the sheet does.
+- Styleguide and the availability cell: the cell's accessible name carries its state ("Mon 16 Nov 18:00: Yes").
 
 ### Changed
 - Archiving a hidden tournament is refused until it is restored, mirroring hiding an archived one.

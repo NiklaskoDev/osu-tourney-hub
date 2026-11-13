@@ -3,6 +3,7 @@
 import sqlite3
 
 from app.domain.models import Member
+from app.repos import availability as availability_repo
 
 _SELECT = (
     "SELECT m.tournament_id, m.osu_id, u.username, u.avatar_url, m.role, m.is_substitute, "
@@ -69,10 +70,12 @@ def update(
 
 
 def remove(conn: sqlite3.Connection, tournament_id: int, osu_id: int) -> None:
+    """Take the person off the roster. Their availability answers there go with them."""
     conn.execute(
         "DELETE FROM tournament_members WHERE tournament_id = ? AND osu_id = ?",
         (tournament_id, osu_id),
     )
+    availability_repo.delete_for_member(conn, tournament_id, osu_id)
 
 
 def _member(row: sqlite3.Row) -> Member:

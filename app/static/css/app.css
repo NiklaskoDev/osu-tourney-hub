@@ -771,6 +771,79 @@ fieldset.field {
   cursor: not-allowed;
 }
 
+.avail {
+  user-select: none;
+}
+
+/* A range being chosen: a ring, since the state colours are already taken */
+.avail[data-selected="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Someone else's answer: same pattern and text, not a control */
+.avail--static {
+  width: auto;
+  min-width: var(--target-min);
+  height: 28px;
+  padding: 0 var(--space-2);
+  cursor: default;
+}
+
+/* Availability grid: a row per 30-minute slot, a column per player */
+.col-name {
+  display: inline-block;
+  max-width: 7rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.table .slot td {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+
+/* Narrow columns, so several players fit beside the time on a phone */
+.avail-grid .table th,
+.avail-grid .table td {
+  padding-left: var(--space-2);
+  padding-right: var(--space-2);
+}
+
+.slot__time {
+  font-variant-numeric: tabular-nums;
+}
+
+.slot__sum {
+  font-variant-numeric: tabular-nums;
+}
+
+.slot__sum.is-enough {
+  color: var(--success);
+  font-weight: var(--weight-strong);
+}
+
+/* A match: the row is shaded across, with a bar and the opponent's name in the time cell */
+.table .slot--match th,
+.table .slot--match td {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.table .slot--match .slot__time {
+  border-left: 3px solid var(--accent);
+}
+
+.slot__band {
+  color: var(--accent);
+  font-weight: var(--weight-strong);
+}
+
+.table .day-row th {
+  background: var(--surface-2);
+  text-align: left;
+}
+
 /* Prediction win/loss: colour plus letter plus percentage */
 .result--win {
   color: var(--success);

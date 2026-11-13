@@ -2,6 +2,8 @@
 {% from "components/alert.html" import alert %}
 {% from "components/button.html" import button %}
 {% from "components/csrf.html" import csrf_field %}
+{% from "components/copy_button.html" import copy_button %}
+{% from "components/countdown.html" import local_time %}
 {% from "components/dialog.html" import dialog %}
 {% from "components/field.html" import field %}
 {% block title %}Your profile - {% endblock %}
@@ -29,6 +31,34 @@
       {{ field("timezone", "Your timezone", options=timezone_options, value=me.timezone or "", error=timezone_error, required=true, hint="Match times and availability are shown in this timezone when you pick local time. If none is saved, your browser suggests one; choose Save timezone to keep it.", data_detect_timezone="1") }}
       <div>{{ button("Save timezone", variant="secondary", type="submit") }}</div>
     </form>
+  </section>
+
+  <section class="stack" aria-labelledby="calendar">
+    <h2 id="calendar">Calendar</h2>
+    <p class="muted">Add your team's matches to a calendar app (Google Calendar, Apple Calendar, Outlook and others) with a private link. It lists match names, team names and times, nothing else. Anyone who has the link can read it, so do not share it.</p>
+    {% if feed_url %}
+    {% call alert("success", "Your calendar link") %}Copy it into your calendar app now. It is shown only once; if you lose it, create a new one.{% endcall %}
+    <div class="field">
+      <label class="field__label" for="feed-url">Calendar link</label>
+      <input class="field__control mono" id="feed-url" type="text" value="{{ feed_url }}" readonly>
+    </div>
+    <div class="row">{{ copy_button(feed_url, label="Copy link") }}</div>
+    {% elif feed_created_at %}
+    <p>A calendar link was created {{ local_time(feed_created_at) }}. It cannot be shown again.</p>
+    {% endif %}
+    <div class="row">
+      <form method="post" action="/me/feed-token">
+        {{ csrf_field(csrf_token) }}
+        {{ button("Create new link" if feed_created_at else "Create calendar link", variant="secondary", type="submit", icon_name="calendar") }}
+      </form>
+      {% if feed_created_at %}
+      <form method="post" action="/me/feed-token/revoke">
+        {{ csrf_field(csrf_token) }}
+        {{ button("Revoke link", variant="secondary", type="submit", icon_name="x") }}
+      </form>
+      {% endif %}
+    </div>
+    {% if feed_created_at %}<p class="muted">Creating a new link makes the old one stop working.</p>{% endif %}
   </section>
 
   <section class="stack" aria-labelledby="sessions">

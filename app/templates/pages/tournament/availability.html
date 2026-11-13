@@ -1,0 +1,84 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/button.html" import button %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/table.html" import table %}
+{% from "components/tabs.html" import tabs %}
+{% from "partials/availability_row.html" import slot_row %}
+{% block title %}Availability - {{ tournament.name }} - {% endblock %}
+{% block head_scripts %}<script src="/static/js/availability.js?v={{ app_version }}" defer></script>{% endblock %}
+
+{% block tournament_content %}
+<div class="page__header">
+  <h1>Availability</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}Availability is read-only. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+{% if view.needs_detection %}
+{% call alert("info", "Your timezone is not saved yet") %}<span data-detect-zone>Times are shown in UTC. Your browser is asked for its timezone; if nothing changes,</span> choose one on <a href="/me">your profile</a>.{% endcall %}
+{% endif %}
+
+{% if not columns %}
+{{ empty_state("Nobody is on the roster yet, so there is nothing to show. Players appear here once they are added on the Members page.") }}
+{% else %}
+
+{{ tabs("Timezone", tz_tabs) }}
+
+<div class="row">
+  {{ button("Previous week", variant="secondary", href=previous_url) }}
+  {{ button("This week", variant="secondary", href=today_url) }}
+  {{ button("Next week", variant="secondary", href=next_url) }}
+  <p><strong>{{ week_label }}</strong> <span class="muted">in {{ view.name }}</span></p>
+</div>
+
+<div class="row row--top">
+  {% if can_pick_member %}
+  <form class="row" method="get" action="/t/{{ tournament.id }}/availability">
+    <input type="hidden" name="week" value="{{ monday }}">
+    {% if view.is_local %}<input type="hidden" name="tz" value="local">{% if not view.needs_detection %}<input type="hidden" name="zone" value="{{ view.name }}">{% endif %}{% endif %}
+    {{ field("member", "Edit availability of", options=member_options, value=member_value, id="avail-member", required=true) }}
+    {{ button("Show", variant="secondary", type="submit") }}
+  </form>
+  {% endif %}
+  {{ button("Export CSV", variant="secondary", icon_name="download", href="/t/" ~ tournament.id ~ "/export/availability.csv") }}
+</div>
+
+{% if editable_id is none %}
+<p class="muted">You are not on the roster as a player, so you can look but not change anything.</p>
+{% else %}
+<p class="muted">Click a slot to change it: Yes, then Maybe, then No. Drag down a column to set a range, or hold Shift with the arrow keys and press Space. {% if editable_id != own_id %}You are editing {{ columns|selectattr("osu_id", "equalto", editable_id)|map(attribute="name")|first }}'s answers.{% endif %}</p>
+{% endif %}
+<p id="avail-status" class="muted" role="status" aria-live="polite"></p>
+
+<nav class="row" aria-label="Jump to a day">
+  {% for anchor, label in grid.days %}<a href="#{{ anchor }}">{{ label.split(" ")[0] }}</a>{% endfor %}
+</nav>
+
+<div class="sheet avail-grid" data-avail-grid data-post-url="/t/{{ tournament.id }}/availability" data-tz="{{ tz_mode }}" data-zone="{{ view.name if view.is_local and not view.needs_detection else '' }}" data-member="{{ editable_id if editable_id is not none else '' }}">
+  {% call table("Availability for " ~ week_label ~ ", times in " ~ view.name) %}
+  <thead>
+    <tr>
+      <th scope="col">Time ({{ view.name }})</th>
+      <th scope="col">Free<span class="visually-hidden"> players, of {{ lineup_size }} needed</span></th>
+      {% for column in columns %}
+      <th scope="col"><span class="col-name" title="{{ column.name }}">{{ column.name }}</span>{% if column.osu_id == own_id %} <span class="muted">(you)</span>{% endif %}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in grid.rows %}
+    {% if row.day_label %}
+    <tr class="day-row" id="{{ row.day_anchor }}"><th scope="colgroup" colspan="{{ columns|length + 2 }}">{{ row.day_label }}</th></tr>
+    {% endif %}
+    {{ slot_row(row, columns, editable_id, lineup_size, archived) }}
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+</div>
+<p class="muted">Matches are shaded and named in the first column. A slot is free for a match when the answer is Yes for its whole length of 90 minutes.</p>
+{% endif %}
+{% endblock %}

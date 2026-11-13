@@ -12,7 +12,7 @@
 {% from "components/countdown.html" import countdown, local_time %}
 {% from "components/pagination.html" import pagination %}
 {% from "components/copy_button.html" import copy_button %}
-{% from "components/availability_cell.html" import availability_cell %}
+{% from "components/availability_cell.html" import availability_cell, availability_static %}
 {% block title %}Styleguide - {% endblock %}
 
 {% block content %}
@@ -186,12 +186,13 @@
 
   <section class="guide-section" aria-labelledby="g-avail">
     <h2 id="g-avail">Availability cell and times</h2>
-    <p class="muted">Press Space or Enter on a cell to change its state.</p>
+    <p class="muted">Press Space or Enter on a cell to change its state. The last cell is another person's answer: it cannot be changed.</p>
     <div class="row">
-      {{ availability_cell("yes") }}
-      {{ availability_cell("maybe") }}
-      {{ availability_cell("no") }}
-      {{ availability_cell("yes", disabled=true) }}
+      {{ availability_cell("yes", label="Mon 16 Nov 18:00") }}
+      {{ availability_cell("maybe", label="Mon 16 Nov 18:30") }}
+      {{ availability_cell("no", label="Mon 16 Nov 19:00") }}
+      {{ availability_cell("yes", disabled=true, label="Mon 16 Nov 19:30") }}
+      {{ availability_static("maybe") }}
     </div>
     <p>Next match in {{ countdown("2030-01-01T20:00:00Z") }} · <span class="muted">local time:</span> {{ local_time("2030-01-01T20:00:00Z") }}</p>
   </section>

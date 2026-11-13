@@ -48,8 +48,13 @@ SHOWN_SAMPLE = 10
 SHOWN_UNKNOWN = 30
 
 
-def _filename(tournament: Tournament, stage: Stage, kind: str) -> str:
-    base = re.sub(r"[^A-Za-z0-9]+", "-", f"{tournament.acronym or tournament.name}-{stage.name}")
+def _filename(tournament: Tournament, stage: Stage | None, kind: str) -> str:
+    name = (
+        f"{tournament.acronym or tournament.name}-{stage.name}"
+        if stage
+        else (tournament.acronym or tournament.name)
+    )
+    base = re.sub(r"[^A-Za-z0-9]+", "-", name)
     return f"{base.strip('-') or 'tournament'}-{kind}.csv"
 
 
@@ -91,6 +96,17 @@ async def export_lineup(
     return _csv_response(
         csv_io.export_lineup(db, access.tournament, chosen),
         _filename(access.tournament, chosen, "lineup"),
+    )
+
+
+@router.get("/export/availability.csv")
+async def export_availability(
+    access: TournamentAccess = Depends(member_access),
+    db: sqlite3.Connection = Depends(get_db),
+) -> Response:
+    return _csv_response(
+        csv_io.export_availability(db, access.tournament),
+        _filename(access.tournament, None, "availability"),
     )
 
 

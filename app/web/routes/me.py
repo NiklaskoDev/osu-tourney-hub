@@ -7,11 +7,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
-from app.clock import Clock
+from app.clock import Clock, to_utc_iso
+from app.config import Settings
 from app.domain.models import User
 from app.domain.timezones import is_valid_timezone, timezone_names
+from app.repos import feeds as feeds_repo
 from app.repos import users as users_repo
-from app.web.deps import get_clock, get_db, require_login
+from app.services import feed_tokens
+from app.web.deps import get_clock, get_db, get_settings, require_login
 from app.web.session import flash, has_recent_login
 from app.web.templating import render
 
@@ -23,9 +26,15 @@ DELETED_MESSAGE = "Your data was deleted."
 
 
 def _page(
-    request: Request, user: User, clock: Clock, timezone_error: str | None = None, **extra: Any
+    request: Request,
+    user: User,
+    clock: Clock,
+    db: sqlite3.Connection,
+    timezone_error: str | None = None,
+    **extra: Any,
 ) -> HTMLResponse:
     context = {
+        "feed_created_at": feeds_repo.created_at(db, user.osu_id),
         "me": user,
         "timezone_options": [("", "Choose your timezone"), *[(n, n) for n in timezone_names()]],
         "timezone_error": timezone_error,
@@ -42,9 +51,12 @@ def _page(
 
 @router.get("", response_class=HTMLResponse)
 async def me_page(
-    request: Request, user: User = Depends(require_login), clock: Clock = Depends(get_clock)
+    request: Request,
+    user: User = Depends(require_login),
+    clock: Clock = Depends(get_clock),
+    db: sqlite3.Connection = Depends(get_db),
 ) -> HTMLResponse:
-    return _page(request, user, clock)
+    return _page(request, user, clock, db)
 
 
 @router.post("/timezone")
@@ -61,11 +73,40 @@ async def save_timezone(
             request,
             user,
             clock,
+            db,
             timezone_error="Choose a timezone from the list.",
         )
     users_repo.set_timezone(db, user.osu_id, value)
     flash(request, "success", f"Timezone saved: {value}.")
     return RedirectResponse("/me", status_code=303)
+
+
+@router.post("/feed-token", response_class=HTMLResponse)
+async def create_feed_token(
+    request: Request,
+    user: User = Depends(require_login),
+    db: sqlite3.Connection = Depends(get_db),
+    clock: Clock = Depends(get_clock),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    """Make a new calendar link (the old one stops working). The link is shown on this response
+    only: nothing but its hash is stored, and it is kept out of the session cookie."""
+    token = feed_tokens.new_token()
+    feeds_repo.replace(db, user.osu_id, feed_tokens.hash_token(token), to_utc_iso(clock.now()))
+    logger.info("Calendar link created for osu! user %s", user.osu_id)
+    page = _page(request, user, clock, db, feed_url=f"{settings.public_url}/feeds/{token}.ics")
+    # The page holds the only copy of the link: keep it out of browser and proxy caches.
+    page.headers["Cache-Control"] = "no-store"
+    return page
+
+
+@router.post("/feed-token/revoke")
+async def revoke_feed_token(
+    request: Request, user: User = Depends(require_login), db: sqlite3.Connection = Depends(get_db)
+) -> Response:
+    feeds_repo.revoke(db, user.osu_id)
+    flash(request, "success", "Your calendar link no longer works.")
+    return RedirectResponse("/me#calendar", status_code=303)
 
 
 @router.get("/export")

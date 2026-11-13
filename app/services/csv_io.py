@@ -18,6 +18,7 @@ from app.db.connection import transaction
 from app.domain.models import Member, PoolMap, Stage, Tournament
 from app.domain.modes import canonical_mods, display_mods, split_mods
 from app.domain.parsing import parse_uint
+from app.repos import availability as availability_repo
 from app.repos import lineups as lineups_repo
 from app.repos import members as members_repo
 from app.repos import scores as scores_repo
@@ -43,6 +44,7 @@ POOL_HEADER = (
     "source",
 )
 LINEUP_HEADER = ("slot", "beatmap_id", "player", "osu_id", "mods", "status")
+AVAILABILITY_HEADER = ("slot_utc", "player", "osu_id", "status")
 
 # What each import field is called in a file, most specific first. Headers are compared in lower
 # case with "_" and "-" read as spaces.
@@ -123,6 +125,22 @@ def export_lineup(conn: sqlite3.Connection, tournament: Tournament, stage: Stage
         if entry.pool_map_id in maps
     ]
     return _csv(LINEUP_HEADER, rows)
+
+
+def export_availability(conn: sqlite3.Connection, tournament: Tournament) -> str:
+    """Every yes and maybe slot of the roster's players (guests have none), in UTC slot order. A
+    slot that is not listed is "no"."""
+    names = {
+        member.osu_id: _name(member)
+        for member in members_repo.list_for_tournament(conn, tournament.id)
+        if member.role != "guest"
+    }
+    rows = [
+        (row["slot_start"], names[row["osu_id"]], row["osu_id"], row["status"])
+        for row in availability_repo.list_all(conn, tournament.id)
+        if row["osu_id"] in names and row["status"] != "no"
+    ]
+    return _csv(AVAILABILITY_HEADER, rows)
 
 
 def _csv(header: tuple[str, ...], rows: list[tuple]) -> str:

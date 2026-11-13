@@ -56,8 +56,15 @@
   <form class="row" method="get" action="/t/{{ tournament.id }}/lineup">
     <input type="hidden" name="stage" value="{{ stage.id }}">
     {{ checkbox("subs", "Include substitutes", checked=include_substitutes) }}
+    {% if availability_filter.matches %}
+    {{ checkbox("avail", "Only players available at match time", checked=only_available) }}
+    {{ field("match", "Match", options=match_options, value=match_value, id="lineup-match", required=true) }}
+    {% endif %}
     {{ button("Update suggestion", variant="secondary", type="submit") }}
   </form>
+  {% if only_available %}
+  <p class="muted">Showing only players who answered Yes for the whole match ({{ availability_filter.selected.opponent_name }}, {{ local_time(availability_filter.selected.match.scheduled_at) }}).{% if availability_filter.maybe_count %} {{ availability_filter.maybe_count }} {{ "player" if availability_filter.maybe_count == 1 else "players" }} answered Maybe and {{ "is" if availability_filter.maybe_count == 1 else "are" }} left out.{% endif %}</p>
+  {% endif %}
 
   {% call table("Suggested lineup for " ~ stage.name) %}
   <thead>
@@ -99,6 +106,7 @@
     {% call dialog("copy-suggestion", "Replace the saved lineup?", "Copy suggested lineup", action="/t/" ~ tournament.id ~ "/lineup/copy-suggestion", csrf=csrf_token) %}
     <input type="hidden" name="stage" value="{{ stage.id }}">
     {% if include_substitutes %}<input type="hidden" name="include_substitutes" value="1">{% endif %}
+    {% if only_available %}<input type="hidden" name="avail" value="1"><input type="hidden" name="match" value="{{ match_value }}">{% endif %}
     <p>The saved lineup for {{ stage.name }} is replaced by the suggestion and becomes a draft.</p>
     {% endcall %}
     {% else %}
@@ -106,6 +114,7 @@
       {{ csrf_field(csrf_token) }}
       <input type="hidden" name="stage" value="{{ stage.id }}">
       {% if include_substitutes %}<input type="hidden" name="include_substitutes" value="1">{% endif %}
+    {% if only_available %}<input type="hidden" name="avail" value="1"><input type="hidden" name="match" value="{{ match_value }}">{% endif %}
       {{ button("Copy suggested lineup", variant="secondary", type="submit", icon_name="copy", disabled=archived) }}
     </form>
     {% endif %}
@@ -125,6 +134,7 @@
     {{ csrf_field(csrf_token) }}
     <input type="hidden" name="stage" value="{{ stage.id }}">
     {% if include_substitutes %}<input type="hidden" name="include_substitutes" value="1">{% endif %}
+    {% if only_available %}<input type="hidden" name="avail" value="1"><input type="hidden" name="match" value="{{ match_value }}">{% endif %}
     <div class="sheet">
     {% call table("Edit the saved lineup for " ~ stage.name) %}
     <thead>

@@ -26,13 +26,16 @@ from app.web.routes import (
     admin,
     admin_setup,
     auth,
+    availability,
     capture,
     dashboard,
+    feeds,
     health,
     lineup,
     me,
     members,
     pool,
+    schedule,
     sheet_io,
     styleguide,
     tournament,
@@ -40,6 +43,7 @@ from app.web.routes import (
 )
 from app.web.security import (
     AUTH_LIMIT_PER_MINUTE,
+    RedactFeedTokens,
     RequestBodyLimitMiddleware,
     SecurityHeadersMiddleware,
     SlidingWindowLimiter,
@@ -69,6 +73,9 @@ def create_app(
         level=settings.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
 
+    access_log = logging.getLogger("uvicorn.access")
+    if not any(isinstance(existing, RedactFeedTokens) for existing in access_log.filters):
+        access_log.addFilter(RedactFeedTokens())
     http = make_http_client(http_transport)
     wybin = WybinClient(http, settings.wybin_min_interval_seconds)
     osu = OsuClient(
@@ -142,6 +149,9 @@ def create_app(
         capture.router,
         sheet_io.router,
         lineup.router,
+        availability.router,
+        schedule.router,
+        feeds.router,
         tournament_settings.router,
         admin.router,
         admin_setup.router,

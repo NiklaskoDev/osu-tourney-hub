@@ -19,6 +19,7 @@ from app.clock import Clock, to_utc_iso
 from app.db.connection import transaction
 from app.domain.models import Stage, Tournament
 from app.repos import capture as capture_repo
+from app.repos import matches as matches_repo
 from app.repos import members as members_repo
 from app.repos import scores as scores_repo
 from app.repos import stages as stages_repo
@@ -27,9 +28,11 @@ from app.repos import tournaments as tournaments_repo
 
 logger = logging.getLogger(__name__)
 
-# Lower runs first. A person asked for it, or the app decided to.
+# Lower runs first. A person asked for it, or the app decided to; the next opponent's players
+# come after our own roster, whose scores decide the lineup.
 PRIORITY_REQUESTED = 0
 PRIORITY_AUTOMATIC = 1
+PRIORITY_OPPONENT = 2
 MAX_ATTEMPTS = 3
 STAGES_TO_CAPTURE = 2  # the stage being played and the one after it
 DRAIN_BATCH = 30
@@ -103,15 +106,43 @@ def enqueue_for_team(
     return enqueue_players(conn, tournament, osu_ids, priority, now, None)
 
 
+def next_opponent_id(conn: sqlite3.Connection, tournament: Tournament, now: datetime) -> int | None:
+    """The opponent in our team's next match that has not started and has both teams set."""
+    ours = tournament.our_team_id
+    if ours is None:
+        return None
+    stamp = to_utc_iso(now)
+    for match in matches_repo.list_for_tournament(conn, tournament.id):
+        if match.status != "scheduled" or not match.scheduled_at or match.scheduled_at <= stamp:
+            continue
+        opponent = match.opponent_of(ours)
+        if opponent is not None:
+            return opponent
+    return None
+
+
+def enqueue_next_opponent(
+    conn: sqlite3.Connection, tournament: Tournament, now: datetime, skip_within: timedelta
+) -> int:
+    """Queue the players of the team we play next, behind our own roster, skipping pulls newer
+    than `skip_within`. Returns how many pulls were queued."""
+    team_id = next_opponent_id(conn, tournament, now)
+    if team_id is None:
+        return 0
+    osu_ids = [player.osu_id for player in teams_repo.list_players(conn, team_id)]
+    return enqueue_players(conn, tournament, osu_ids, PRIORITY_OPPONENT, now, skip_within)
+
+
 def enqueue_active(conn: sqlite3.Connection, clock: Clock, refresh_hours: int) -> int:
-    """Queue the rosters of all active tournaments, skipping pulls newer than `refresh_hours`.
-    Running it again is cheap: only new players, new maps and stale pulls are queued."""
+    """Queue the rosters of all active tournaments and the players of their next opponent,
+    skipping pulls newer than `refresh_hours`. Running it again is cheap: only new players, new
+    maps and stale pulls are queued."""
     now = clock.now()
+    skip_within = timedelta(hours=refresh_hours)
     queued = 0
     for tournament in tournaments_repo.list_active(conn):
-        queued += enqueue_for_tournament(
-            conn, tournament, PRIORITY_AUTOMATIC, now, timedelta(hours=refresh_hours)
-        )
+        queued += enqueue_for_tournament(conn, tournament, PRIORITY_AUTOMATIC, now, skip_within)
+        queued += enqueue_next_opponent(conn, tournament, now, skip_within)
     return queued
 
 
