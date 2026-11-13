@@ -1,4 +1,4 @@
-FROM python:3.13.18-slim-bookworm AS build
+FROM python:3.15.0-slim-bookworm AS build
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PATH=/opt/venv/bin:$PATH
@@ -14,7 +14,7 @@ COPY app ./app
 RUN pip install --no-cache-dir --no-deps .
 
 
-FROM python:3.13.18-slim-bookworm AS runtime
+FROM python:3.15.0-slim-bookworm AS runtime
 
 # uid 99 / gid 100 are the Unraid defaults; the entrypoint adjusts them to PUID / PGID.
 RUN groupadd --non-unique --gid 100 app \
