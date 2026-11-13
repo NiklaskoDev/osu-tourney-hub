@@ -63,3 +63,29 @@ def has_snapshot_on_day(conn: sqlite3.Connection, match_id: int, kind: str, day:
         (match_id, kind, day),
     ).fetchone()
     return row is not None
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    kind: str
+    created_at: str
+    win_prob_team1: float
+    expected_score: str | None
+    payload: str  # JSON, see `matchup.snapshot_payload`
+    model_version: str
+
+
+def latest_snapshot(
+    conn: sqlite3.Connection, match_id: int, kind: str, until: str | None = None
+) -> Snapshot | None:
+    """The newest snapshot of the kind, no later than `until` (a UTC time) when given."""
+    sql = (
+        "SELECT kind, created_at, win_prob_team1, expected_score, payload, model_version "
+        "FROM predictions WHERE match_id = ? AND kind = ?"
+    )
+    params: list[object] = [match_id, kind]
+    if until is not None:
+        sql += " AND created_at <= ?"
+        params.append(until)
+    row = conn.execute(sql + " ORDER BY created_at DESC, id DESC LIMIT 1", params).fetchone()
+    return Snapshot(**row) if row else None

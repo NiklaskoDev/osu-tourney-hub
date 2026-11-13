@@ -42,6 +42,11 @@
   </p>
 </div>
 
+<div class="row">
+  {{ button("Review: played against predicted", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ match.id ~ "/review") }}
+  {% if view.right %}{{ button("How " ~ view.right.name ~ " picks and bans", variant="secondary", href="/t/" ~ tournament.id ~ "/opponents/" ~ view.right.id) }}{% endif %}
+</div>
+
 {% if archived %}
 {% call alert("info", "This tournament is archived") %}The plan is read-only. An administrator can unarchive the tournament.{% endcall %}
 {% endif %}

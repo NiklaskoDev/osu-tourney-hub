@@ -18,6 +18,7 @@ MAX_SCORE = 2_000_000_000  # what the scores table accepts
 # The room's scoring type as the API names it -> the scoring stored with a score.
 SCORING_TYPES = {"scorev2": "v2", "score": "v1"}
 UNKNOWN_SCORING = "unknown"  # accuracy and combo rooms rank by something else
+TEAM_COLOURS = ("red", "blue")  # a head-to-head lobby reports "none"
 _MODE_BY_NAME = {name: code for code, name in API_MODE_NAMES.items()}
 
 
@@ -92,6 +93,7 @@ def _parse_score(raw: object, gamemode: int) -> MpScore | None:
     stats = statistics if isinstance(statistics, dict) else {}
     match = raw.get("match")
     passed = match.get("pass") if isinstance(match, dict) and "pass" in match else raw.get("passed")
+    team = match.get("team") if isinstance(match, dict) else None
     return MpScore(
         osu_id=osu_id,
         score=int(score),
@@ -100,6 +102,7 @@ def _parse_score(raw: object, gamemode: int) -> MpScore | None:
         misses=_count(stats.get("count_miss", stats.get("miss"))),
         mods=mods,
         passed=True if passed is None else bool(passed),
+        team=team if team in TEAM_COLOURS else None,
     )
 
 

@@ -1,0 +1,100 @@
+{% extends "layout/tournament.html" %}
+{% from "components/badge.html" import badge %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/map_name.html" import map_name %}
+{% from "components/table.html" import table %}
+{% block title %}{{ view.team.name }} - {{ tournament.name }} - {% endblock %}
+
+{% macro slot_counts(items) -%}
+{%- if items -%}{% for slot, times in items %}{{ badge(slot) }}{% if times > 1 %}<span class="num"> x{{ times }}</span>{% endif %}{% if not loop.last %} {% endif %}{% endfor %}{%- else -%}<span class="muted">-</span>{%- endif -%}
+{%- endmacro %}
+
+{% block tournament_content %}
+<div class="page__header">
+  <h1>{{ view.team.name }}</h1>
+  <p class="muted">How this team picked and banned in the matches played so far</p>
+</div>
+
+{% if not view.matches %}
+{{ empty_state("No picks or bans are recorded for " ~ view.team.name ~ " yet. They appear here once a match of theirs has been played and its lobby read.") }}
+{% else %}
+<dl class="facts">
+  <div><dt>Matches with a record</dt><dd><span class="num">{{ view.matches }}</span></dd></div>
+  <div>
+    <dt>Picked first</dt>
+    <dd>{% if view.first_pick_rate is not none %}<span class="num">{{ view.first_pick_rate|fmt_pct }}</span> <span class="muted">of matches</span>{% else %}<span class="muted">Not known</span>{% endif %}</dd>
+  </div>
+</dl>
+
+<section class="stack" aria-labelledby="brackets-heading">
+  <h2 id="brackets-heading">By mod bracket</h2>
+  {% if view.brackets %}
+  {% call table("Picks and bans of " ~ view.team.name ~ " by mod bracket") %}
+  <thead>
+    <tr>
+      <th scope="col">Bracket</th>
+      <th scope="col" class="is-numeric">Picks</th>
+      <th scope="col" class="is-numeric">Share of picks</th>
+      <th scope="col" class="is-numeric">Bans</th>
+      <th scope="col" class="is-numeric">Share of bans</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in view.brackets %}
+    <tr>
+      <th scope="row">{{ row.bracket }}</th>
+      <td class="is-numeric"><span class="num">{{ row.picks }}</span></td>
+      <td class="is-numeric"><span class="num">{{ row.pick_share|fmt_pct }}</span></td>
+      <td class="is-numeric"><span class="num">{{ row.bans }}</span></td>
+      <td class="is-numeric"><span class="num">{{ row.ban_share|fmt_pct }}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  <p class="muted">Picks only count once it is known which team made them. Predictions lean on these shares a little: a team is more likely to pick and ban in the brackets it has used before.</p>
+  {% else %}
+  {{ empty_state("It is not known who made the picks yet. A captain can set the team of one pick on the review page of a match; the others follow from it.") }}
+  {% endif %}
+</section>
+
+<section class="stack" aria-labelledby="rounds-heading">
+  <h2 id="rounds-heading">By round</h2>
+  {% call table("Maps " ~ view.team.name ~ " picked and banned in each round") %}
+  <thead>
+    <tr>
+      <th scope="col">Round</th>
+      <th scope="col" class="is-numeric">Matches</th>
+      <th scope="col">Picked</th>
+      <th scope="col">Banned</th>
+      <th scope="col">Picked first</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in view.rounds %}
+    <tr>
+      <th scope="row">{{ row.stage }}</th>
+      <td class="is-numeric"><span class="num">{{ row.matches }}</span></td>
+      <td>{{ slot_counts(row.picked) }}</td>
+      <td>{{ slot_counts(row.banned) }}</td>
+      <td>{{ row.first_pick }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+</section>
+
+{% if view.never_picked %}
+<section class="stack" aria-labelledby="never-heading">
+  <h2 id="never-heading">Never picked</h2>
+  {% for stage_name, maps in view.never_picked %}
+  <p><strong>{{ stage_name }}</strong></p>
+  <ul class="stack">
+    {% for pool_map in maps %}
+    <li>{{ badge(pool_map.slot) }} {{ map_name(pool_map) }}</li>
+    {% endfor %}
+  </ul>
+  {% endfor %}
+</section>
+{% endif %}
+{% endif %}
+{% endblock %}

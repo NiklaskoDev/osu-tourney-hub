@@ -365,6 +365,7 @@ Note: best slots are computed on demand from `availability` and the opponents' t
 2. `/t/{tid}/matches/{mid}/review`: actual vs predicted bans/picks/winners per map, hit rate; `/t/{tid}/opponents/{team_id}`: picks/bans per bracket across rounds, first-pick tendencies, maps never picked.
 3. Feed habits into `simulate_series` (weight `HABIT_WEIGHT = 0.3`, constant).
 4. Tests: event derivation from synthetic MP fixtures (abort/re-played map counted once — last completed game wins), side mapping via membership, manual override precedence, review metrics, habit aggregation.
+5. Only captains of the two teams (and admins) may correct a match — decided by the programmer 2026-11-13.
 
 ### Phase 9 — live match mode (`feat/live`)
 1. `services/live.py`: `LiveHub` (in-process pub/sub: `subscribe(match_id) -> asyncio.Queue`, `publish(match_id, event)`), `follow(match)` task: poll `fetch_match_after` every `LIVE_POLL_SECONDS` with `LIVE` priority, update `match_events`, publish `state` events (running score, maps played/remaining, banned, next-pick suggestion via `simulate_series` from current state). Auto-start when a match with `mp_match_id` is within 30 min of start or a captain presses Start; auto-stop when lobby ended or after 4 h.

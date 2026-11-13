@@ -9,6 +9,7 @@ from app.clients.wybin import WybinClient
 from app.clock import Clock
 from app.config import Settings
 from app.db.connection import open_db
+from app.services.history import import_pending
 from app.services.lobbies import import_wybin_links
 from app.services.score_capture import DRAIN_BATCH, drain, enqueue_active
 from app.services.skimmer import Skimmer
@@ -20,6 +21,7 @@ SYNC_ACTIVE = "wybin_sync_active"
 CAPTURE_ENQUEUE = "capture_enqueue_active"
 CAPTURE_DRAIN = "capture_drain"
 LOBBY_LINKS = "lobby_wybin_links"
+MATCH_HISTORY = "match_history"
 SKIMMER_HEAD = "skimmer_head"
 SKIMMER_WORKERS = "skimmer_workers"
 SKIMMER_OPEN_CHECK = "skimmer_open_check"
@@ -38,6 +40,7 @@ JOB_LABELS = {
     CAPTURE_ENQUEUE: "Queue osu! score pulls for active tournaments",
     CAPTURE_DRAIN: "Pull queued scores from osu!",
     LOBBY_LINKS: "Read multiplayer lobbies linked on wybin",
+    MATCH_HISTORY: "Read the lobbies of finished matches for the match history",
     SKIMMER_HEAD: "Scanner: find the newest multiplayer lobby id",
     SKIMMER_WORKERS: "Scanner: read new multiplayer lobbies (runs continuously)",
     SKIMMER_OPEN_CHECK: "Scanner: read lobbies that were open when seen",
@@ -80,12 +83,17 @@ def build_jobs(
         with closing(open_db(settings.db_path)) as conn:
             await import_wybin_links(conn, osu, clock.now())
 
+    async def read_history() -> None:
+        with closing(open_db(settings.db_path)) as conn:
+            await import_pending(conn, osu)
+
     jobs = [
         Job(TRACK_SIGNUPS, TRACK_SIGNUPS_INTERVAL, track),
         Job(SYNC_ACTIVE, timedelta(minutes=settings.wybin_poll_minutes), sync),
         Job(CAPTURE_ENQUEUE, CAPTURE_ENQUEUE_INTERVAL, enqueue),
         Job(CAPTURE_DRAIN, CAPTURE_DRAIN_INTERVAL, pull),
         Job(LOBBY_LINKS, timedelta(minutes=settings.wybin_poll_minutes), read_wybin_links),
+        Job(MATCH_HISTORY, timedelta(minutes=settings.wybin_poll_minutes), read_history),
     ]
     if settings.scanner_enabled:
         jobs += _skimmer_jobs(settings, skimmer)

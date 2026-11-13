@@ -30,7 +30,7 @@ router = APIRouter(prefix="/t/{tid}/matches/{mid}")
 NO_SUCH_MATCH = "This match is not in this tournament."
 
 
-def _match(db: sqlite3.Connection, access: TournamentAccess, mid: str) -> Match:
+def find_match(db: sqlite3.Connection, access: TournamentAccess, mid: str) -> Match:
     match_id = parse_uint(mid)
     found = matches_repo.get(db, match_id) if match_id is not None else None
     if found is None or found.tournament_id != access.tournament.id:
@@ -86,7 +86,7 @@ async def match_page(
     access: TournamentAccess = Depends(member_access),
     db: sqlite3.Connection = Depends(get_db),
 ) -> HTMLResponse:
-    return _page(request, access, db, _match(db, access, mid))
+    return _page(request, access, db, find_match(db, access, mid))
 
 
 @router.post("/plan")
@@ -98,7 +98,7 @@ async def save_plan(
     db: sqlite3.Connection = Depends(get_db),
     clock: Clock = Depends(get_clock),
 ) -> Response:
-    match = _match(db, access, mid)
+    match = find_match(db, access, mid)
     fields = await request.form()
     values = {key: value for key, value in fields.items() if isinstance(value, str)}
     try:

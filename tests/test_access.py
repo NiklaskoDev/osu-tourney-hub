@@ -255,11 +255,18 @@ def our_match(arranged, db):
 
 
 @pytest.mark.parametrize("case", ROLES)
-def test_viewing_matches_and_pickems(case, arranged, our_match, client, act_as):
+def test_viewing_matches_and_pickems(case, arranged, our_match, client, act_as, db):
     act_as(case)
     match, _ = our_match
 
-    for path in (f"/t/{arranged}/matches/{match}", f"/t/{arranged}/pickems"):
+    rivals = db.execute("SELECT id FROM teams WHERE name = 'Rival Crew'").fetchone()[0]
+    paths = (
+        f"/t/{arranged}/matches/{match}",
+        f"/t/{arranged}/pickems",
+        f"/t/{arranged}/matches/{match}/review",
+        f"/t/{arranged}/opponents/{rivals}",
+    )
+    for path in paths:
         assert client.get(path, follow_redirects=False).status_code == expected_view(case), path
 
 
@@ -277,6 +284,25 @@ def test_saving_a_match_plan(case, arranged, our_match, client, act_as, db):
     assert saved.status_code == expected_write(case), case
     rows = db.execute("SELECT COUNT(*) FROM plan_items").fetchone()[0]
     assert rows == int(case in MANAGERS)
+
+
+@pytest.mark.parametrize("case", ROLES)
+def test_correcting_and_reading_match_events(case, arranged, our_match, client, act_as, db):
+    token = act_as(case)
+    match, pool_map = our_match
+    base = f"/t/{arranged}/matches/{match}"
+
+    corrected = client.post(
+        f"{base}/events",
+        data={**token, "new_kind": "ban", "new_side": "1", "new_map": str(pool_map)},
+        follow_redirects=False,
+    )
+    refreshed = client.post(f"{base}/review/refresh", data=token, follow_redirects=False)
+
+    assert corrected.status_code == expected_write(case), case
+    # the match has no lobby, so a manager is refused with 409 and everyone else as for any write
+    assert refreshed.status_code == (409 if case in MANAGERS else expected_write(case)), case
+    assert db.execute("SELECT COUNT(*) FROM match_events").fetchone()[0] == int(case in MANAGERS)
 
 
 def test_a_non_member_cannot_tell_a_real_tournament_from_a_missing_one(client, arranged, act_as):

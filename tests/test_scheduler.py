@@ -17,6 +17,7 @@ from app.workers.jobs import (
     CAPTURE_DRAIN,
     CAPTURE_ENQUEUE,
     LOBBY_LINKS,
+    MATCH_HISTORY,
     SKIMMER_HEAD,
     SKIMMER_OPEN_CHECK,
     SKIMMER_STATS_PRUNE,
@@ -226,6 +227,7 @@ def test_the_app_registers_its_jobs_with_the_configured_interval(app, settings, 
         CAPTURE_ENQUEUE,
         CAPTURE_DRAIN,
         LOBBY_LINKS,
+        MATCH_HISTORY,
         SKIMMER_HEAD,
         SKIMMER_WORKERS,
         SKIMMER_OPEN_CHECK,
@@ -236,6 +238,7 @@ def test_the_app_registers_its_jobs_with_the_configured_interval(app, settings, 
     assert jobs[CAPTURE_ENQUEUE].interval == timedelta(hours=1)
     assert jobs[CAPTURE_DRAIN].interval == timedelta(minutes=1)
     assert jobs[LOBBY_LINKS].interval == timedelta(minutes=30)
+    assert jobs[MATCH_HISTORY].interval == timedelta(minutes=30)
     assert jobs[SKIMMER_HEAD].interval == timedelta(seconds=60)
     assert jobs[SKIMMER_OPEN_CHECK].interval == timedelta(minutes=5)
     assert jobs[SKIMMER_STATS_PRUNE].interval == timedelta(hours=1)
@@ -249,7 +252,14 @@ def test_a_switched_off_scanner_registers_none_of_its_jobs(app, settings, clock)
         for item in build_jobs(off, clock, app.state.wybin, app.state.osu, app.state.skimmer)
     }
 
-    assert names == {TRACK_SIGNUPS, SYNC_ACTIVE, CAPTURE_ENQUEUE, CAPTURE_DRAIN, LOBBY_LINKS}
+    assert names == {
+        TRACK_SIGNUPS,
+        SYNC_ACTIVE,
+        CAPTURE_ENQUEUE,
+        CAPTURE_DRAIN,
+        LOBBY_LINKS,
+        MATCH_HISTORY,
+    }
 
 
 def test_the_lobby_link_job_follows_the_wybin_poll_interval(app, settings, clock):

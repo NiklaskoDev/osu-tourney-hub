@@ -13,7 +13,7 @@ from app.repos import matches as matches_repo
 from app.repos import stages as stages_repo
 from app.repos import teams as teams_repo
 from app.repos.matches import MatchValues
-from app.services import links
+from app.services import history, links
 
 STATUS_SCHEDULED = "scheduled"
 STATUS_DONE = "done"
@@ -46,6 +46,9 @@ def apply_matches(
             status=status_for(match),
         )
         matches_repo.upsert_wybin(conn, tournament_id, values, stamp)
+        stored = matches_repo.find_by_wybin_id(conn, tournament_id, match.wybin_match_id)
+        if stored is not None:
+            history.record_wybin_bans(conn, stored.id, stored.stage_id, match.bans1, match.bans2)
 
 
 def status_for(match: WybinMatch) -> str:

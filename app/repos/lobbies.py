@@ -131,6 +131,17 @@ def get(conn: sqlite3.Connection, mp_match_id: int) -> Lobby | None:
     return _lobby(row) if row else None
 
 
+def first_game_at(conn: sqlite3.Connection, mp_match_id: int) -> str | None:
+    """When the lobby's first pool-map game was played, else when the lobby started."""
+    row = conn.execute(
+        "SELECT COALESCE("
+        "(SELECT MIN(played_at) FROM lobby_pool_hits WHERE mp_match_id = l.mp_match_id), "
+        "l.started_at) AS began FROM lobbies l WHERE l.mp_match_id = ?",
+        (mp_match_id,),
+    ).fetchone()
+    return row["began"] if row else None
+
+
 def registered_players(
     conn: sqlite3.Connection, tournament_ids: Collection[int]
 ) -> dict[int, dict[int, int | None]]:

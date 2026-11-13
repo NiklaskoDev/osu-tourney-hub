@@ -310,6 +310,7 @@ class MpScore:
     misses: int | None
     mods: str  # canonical
     passed: bool
+    team: str | None = None  # the lobby's team colour ("red", "blue"); None in head-to-head
 
 
 @dataclass(frozen=True)

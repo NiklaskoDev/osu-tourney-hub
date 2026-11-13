@@ -168,6 +168,8 @@ class WybinMatch:
     score1: int | None
     score2: int | None
     multiplayer_link: str | None
+    bans1: tuple[int, ...] = ()  # beatmap ids side 1 banned, in the order wybin lists them
+    bans2: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -366,7 +368,24 @@ def _parse_match(item: object, stage_id: int | None) -> WybinMatch:
         score1=_score_or_none(obj.get("opponentOneScore")),
         score2=_score_or_none(obj.get("opponentTwoScore")),
         multiplayer_link=link.strip()[:MAX_LINK_LENGTH] if isinstance(link, str) else None,
+        bans1=_parse_bans(obj.get("opponentOneBans")),
+        bans2=_parse_bans(obj.get("opponentTwoBans")),
     )
+
+
+def _parse_bans(value: object) -> tuple[int, ...]:
+    """The beatmap ids in a ban list. The list is empty in every response seen so far, so what an
+    entry looks like is not confirmed: a bare id or an object with `beatmapId` (also nested under
+    `beatmap`) is read, anything else is skipped."""
+    if not isinstance(value, list):
+        return ()
+    found: list[int] = []
+    for entry in value:
+        nested = entry.get("beatmap") if isinstance(entry, dict) else None
+        source = nested if isinstance(nested, dict) else entry
+        raw = source.get("beatmapId") if isinstance(source, dict) else source
+        _collect(found, _int_or_none(raw))
+    return tuple(found)
 
 
 def _parse_side(player: object, opponent: object) -> WybinSide:

@@ -32,6 +32,34 @@ def get(conn: sqlite3.Connection, match_id: int) -> Match | None:
     return Match(**row) if row else None
 
 
+def find_by_wybin_id(
+    conn: sqlite3.Connection, tournament_id: int, wybin_match_id: int
+) -> Match | None:
+    row = conn.execute(
+        _SELECT + "WHERE tournament_id = ? AND wybin_match_id = ?", (tournament_id, wybin_match_id)
+    ).fetchone()
+    return Match(**row) if row else None
+
+
+def list_played_with_lobby(conn: sqlite3.Connection, limit: int, read_prefix: str) -> list[Match]:
+    """Finished matches of active tournaments that name a lobby, have no lobby or corrected
+    events yet and are not marked in app_settings (`read_prefix` + match id) as read, the most
+    recent first."""
+    rows = conn.execute(
+        "SELECT m.id, m.tournament_id, m.stage_id, m.wybin_match_id, m.label, m.team1_id, "
+        "m.team2_id, m.scheduled_at, m.score1, m.score2, m.mp_match_id, m.status, m.updated_at "
+        "FROM matches m JOIN tournaments t ON t.id = m.tournament_id "
+        "WHERE t.status = 'active' AND m.status = 'done' AND m.mp_match_id IS NOT NULL "
+        "AND m.team1_id IS NOT NULL AND m.team2_id IS NOT NULL "
+        "AND NOT EXISTS (SELECT 1 FROM match_events e "
+        "WHERE e.match_id = m.id AND e.source != 'wybin') "
+        "AND NOT EXISTS (SELECT 1 FROM app_settings s WHERE s.key = ? || m.id) "
+        "ORDER BY m.scheduled_at DESC, m.id DESC LIMIT ?",
+        (read_prefix, limit),
+    ).fetchall()
+    return [Match(**row) for row in rows]
+
+
 def list_for_tournament(conn: sqlite3.Connection, tournament_id: int) -> list[Match]:
     """Matches in time order; the ones without a time come last."""
     rows = conn.execute(

@@ -18,7 +18,7 @@ from statistics import median
 from app.domain.models import PoolMap, Stage
 from app.services.sheet import BestKey, BestScore
 
-MODEL_VERSION = "stat-1"
+MODEL_VERSION = "stat-2"  # stat-2: the teams' pick and ban habits bend the simulation
 # Steepness of the map curve: a team 8 % ahead of the mean score wins a map about 73 % of the time.
 K = 0.08
 HABIT_WEIGHT = 0.3  # how much a team's own pick and ban habits bend the simulated choices
@@ -45,6 +45,7 @@ class Habits:
 
     pick_rate: Mapping[str, float]
     ban_rate: Mapping[str, float]
+    first_pick_rate: float | None = None  # shown on the opponent page; the simulation tries both
 
 
 @dataclass(frozen=True)

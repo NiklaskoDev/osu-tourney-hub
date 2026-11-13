@@ -1,0 +1,138 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/checkbox.html" import checkbox %}
+{% from "components/countdown.html" import local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/map_name.html" import map_name %}
+{% from "components/table.html" import table %}
+{% set team1_name = view.team1.name if view.team1 else "Team not decided" %}
+{% set team2_name = view.team2.name if view.team2 else "Team not decided" %}
+{% block title %}Review {{ team1_name }} vs {{ team2_name }} - {{ tournament.name }} - {% endblock %}
+
+{% macro tally(label, counted) -%}
+<div>
+  <dt>{{ label }}</dt>
+  <dd>{% if counted.total %}<span class="num">{{ counted.hits }}</span> <span class="muted">of {{ counted.total }}</span> <span class="num">({{ counted.rate|fmt_pct }})</span>{% else %}<span class="muted">Nothing to compare</span>{% endif %}</dd>
+</div>
+{%- endmacro %}
+
+{% macro verdict(flag) -%}
+{%- if flag is none -%}<span class="muted" aria-label="Not judged">-</span>
+{%- elif flag -%}<span class="result--win">Hit</span>
+{%- else -%}<span class="result--loss">Miss</span>{%- endif -%}
+{%- endmacro %}
+
+{% block tournament_content %}
+{% set match = view.match %}
+{% set vals = form_values %}
+{% set ff = form_error_field|default(none) %}
+<div class="page__header">
+  <h1>Review: {{ team1_name }} vs {{ team2_name }}</h1>
+  <p class="muted">{% if view.stage %}{{ view.stage.name }}{% endif %}{% if match.label %}{% if view.stage %}, {% endif %}{{ match.label }}{% endif %}{% if match.status == "done" and match.score1 is not none %}, final score <span class="num">{{ match.score1 }} - {{ match.score2 }}</span>{% endif %}</p>
+</div>
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}Events cannot be changed. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+{% if form_error and not ff %}
+{% call alert("error", "Events not saved") %}{{ form_error }}{% endcall %}
+{% endif %}
+
+<div class="row">
+  {{ button("Back to the match", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ match.id) }}
+  {% if can_edit and match.mp_match_id %}
+  <form method="post" action="/t/{{ tournament.id }}/matches/{{ match.id }}/review/refresh">
+    {{ csrf_field(csrf_token) }}
+    {{ button("Read lobby again", variant="secondary", type="submit", icon_name="refresh-cw", title="Rebuild the picks from the match's multiplayer lobby") }}
+  </form>
+  {% endif %}
+</div>
+
+{% if not view.rows %}
+{{ empty_state("No protects, bans or picks are recorded for this match yet." ~ (" The picks come from its multiplayer lobby once the match is played." if match.mp_match_id else " It has no multiplayer link yet, and wybin lists no bans for it.") ~ (" A captain can also add them below." if can_edit else "")) }}
+{% else %}
+{% if not view.has_prediction %}
+{% call alert("info", "No prediction to compare with") %}No prediction was saved for this match before it started, so the prediction columns stay empty. One is saved the first time the match page is opened each day.{% endcall %}
+{% endif %}
+<dl class="facts">
+  <div>
+    <dt>Predicted winner</dt>
+    <dd>{% if view.series_prediction %}{{ view.series_prediction }} {{ verdict(view.series_correct) }}{% else %}<span class="muted">No prediction</span>{% endif %}</dd>
+  </div>
+  {% if view.protects.total %}{{ tally("Protects predicted", view.protects) }}{% endif %}
+  {{ tally("Bans predicted", view.bans) }}
+  {{ tally("Picks predicted", view.picks) }}
+  {{ tally("Map winners predicted", view.winners) }}
+  {% if view.predicted_at %}<div><dt>Prediction saved</dt><dd>{{ local_time(view.predicted_at) }}</dd></div>{% endif %}
+</dl>
+
+<section class="stack" aria-labelledby="events-heading">
+  <h2 id="events-heading">What was played</h2>
+  {% call table("Protects, bans and picks of the match, with the prediction for each") %}
+  <thead>
+    <tr>
+      <th scope="col">Step</th>
+      <th scope="col">Map</th>
+      <th scope="col">By</th>
+      <th scope="col">Chosen as predicted</th>
+      <th scope="col">Winner</th>
+      <th scope="col">Winner predicted</th>
+      <th scope="col">Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in view.rows %}
+    {% set event = row.event %}
+    <tr>
+      <th scope="row">{{ event.kind|capitalize }}</th>
+      <td>{% if row.pool_map %}{{ badge(row.pool_map.slot) }} {{ map_name(row.pool_map) }}{% elif event.beatmap_id %}<span class="muted">Beatmap {{ event.beatmap_id }}, not in the pool</span>{% else %}<span class="muted">Unknown map</span>{% endif %}</td>
+      <td>{% if row.team %}{{ row.team }}{% elif event.kind == "tiebreaker" %}<span class="muted">Not a team's choice</span>{% else %}<span class="muted">Not known</span>{% endif %}</td>
+      <td>{% if event.kind == "tiebreaker" %}<span class="muted">-</span>{% else %}{{ verdict(row.expected) }}{% endif %}</td>
+      <td>{% if row.winner %}{{ row.winner }}{% if event.team1_score is not none %} <span class="cell-sub num">{{ event.team1_score }} - {{ event.team2_score }}</span>{% endif %}{% else %}<span class="muted">-</span>{% endif %}</td>
+      <td>{% if row.predicted_winner %}{{ row.predicted_winner }} {{ verdict(row.winner_correct) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+      <td>{{ {"wybin": "wybin", "mp": "Lobby", "manual": "Captain"}[event.source] }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  <p class="muted">A protect, ban or pick is a hit when the prediction named the same map for the same team. A map winner is a hit when the team with the better expected score won it. Maps without data for both teams are not judged.</p>
+</section>
+{% endif %}
+
+{% if can_edit and view.pool %}
+<details class="map-detail"{% if form_error %} open{% endif %}>
+  <summary>Correct events</summary>
+  <form class="stack" method="post" action="/t/{{ tournament.id }}/matches/{{ match.id }}/events">
+    {{ csrf_field(csrf_token) }}
+    <p class="muted">wybin lists bans and the lobby shows the maps, but neither says who picked a map. Set the team of one pick and the other picks alternate from it. A correction stays when the lobby is read again; tick "Undo" to go back to what was imported.</p>
+    {% for row in view.rows %}
+    {% set seq = row.event.seq %}
+    {% set label = row.event.kind|capitalize ~ " " ~ loop.index %}
+    <div class="row row--top">
+      <strong>{{ label }}</strong>
+      {% set k = side_field(seq) %}
+      {{ field(k, "Team for " ~ label|lower, options=side_options, value=vals.get(k, row.event.team_side|string if row.event.team_side else ""), label_hidden=true, id="f-" ~ k, error=form_error if ff == k else none) }}
+      {% set k = map_field(seq) %}
+      {{ field(k, "Map for " ~ label|lower, options=map_options, value=vals.get(k, row.event.pool_map_id|string if row.event.pool_map_id else ""), label_hidden=true, id="f-" ~ k, error=form_error if ff == k else none) }}
+      {% set k = winner_field(seq) %}
+      {% if row.event.kind in ("pick", "tiebreaker") %}
+      {{ field(k, "Winner of " ~ label|lower, options=winner_options, value=vals.get(k, row.event.winner_side|string if row.event.winner_side else ""), label_hidden=true, id="f-" ~ k, error=form_error if ff == k else none) }}
+      {% endif %}
+      {% if row.event.source == "manual" %}{{ checkbox(reset_field(seq), "Undo correction", id="f-" ~ reset_field(seq)) }}{% endif %}
+    </div>
+    {% endfor %}
+    <div class="row row--top">
+      {{ field("new_kind", "New event", options=kind_options, value=vals.get("new_kind", ""), id="f-new-kind", error=form_error if ff == "new_kind" else none) }}
+      {{ field("new_side", "Team", options=side_options, value=vals.get("new_side", ""), id="f-new-side", error=form_error if ff == "new_side" else none) }}
+      {{ field("new_map", "Map", options=map_options, value=vals.get("new_map", ""), id="f-new-map", error=form_error if ff == "new_map" else none) }}
+      {{ field("new_winner", "Winner", options=winner_options, value=vals.get("new_winner", ""), id="f-new-winner", error=form_error if ff == "new_winner" else none) }}
+    </div>
+    <div>{{ button("Save events", variant="primary", type="submit") }}</div>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

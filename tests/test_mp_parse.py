@@ -158,3 +158,17 @@ def test_the_last_final_event_does_not_depend_on_the_order_given():
     events = [event(13), event(12, game(2, end_time=None, scores=[])), event(11, game(1))]
 
     assert last_final_event_id(events) == 11
+
+
+def test_a_score_keeps_the_team_colour_of_a_team_lobby_and_none_for_head_to_head():
+    scores = [
+        score(1, match={"slot": 0, "team": "red", "pass": True}),
+        score(2, match={"slot": 1, "team": "blue", "pass": True}),
+        score(3, match={"slot": 2, "team": "none", "pass": True}),
+        score(4, match={"slot": 3, "team": "purple", "pass": True}),
+        score(5, match=None),
+    ]
+
+    (parsed,) = parse_games([event(1, game(scores=scores))])
+
+    assert [s.team for s in parsed.scores] == ["red", "blue", None, None, None]

@@ -135,6 +135,26 @@ def test_an_unexpected_shape_is_a_format_error(data):
         parse_matches(data)
 
 
+def test_the_bans_of_each_side_are_read_as_beatmap_ids():
+    data = load_fixture("matches_team")
+    played = data["stages"][0]["matches"][0]
+    played["opponentOneBans"] = [910001, {"beatmapId": 910002}, {"beatmap": {"beatmapId": 910003}}]
+    played["opponentTwoBans"] = [910004, 910004, "junk", None, True, {"x": 1}]
+
+    found = parse_matches(data)[0]
+
+    assert found.bans1 == (910001, 910002, 910003)
+    assert found.bans2 == (910004,)  # a repeated or unreadable entry is skipped
+
+
+@pytest.mark.parametrize("value", [None, "910001", 5, {"a": 1}])
+def test_ban_lists_that_are_not_lists_are_empty(value):
+    data = load_fixture("matches_team")
+    data["stages"][0]["matches"][0]["opponentOneBans"] = value
+
+    assert parse_matches(data)[0].bans1 == ()
+
+
 @pytest.mark.parametrize("value", [None, "12", -1, True, 1.5])
 def test_a_score_must_be_a_whole_number_not_below_zero(value):
     data = load_fixture("matches_team")

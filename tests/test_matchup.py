@@ -196,7 +196,7 @@ def test_the_first_view_of_a_day_keeps_a_snapshot_and_later_views_do_not(db, cup
     rows = snapshots(db, match_id)
     assert [row["created_at"][:10] for row in rows] == ["2026-11-12", "2026-11-13"]
     assert {row["kind"] for row in rows} == {"stat"}
-    assert {row["model_version"] for row in rows} == {"stat-1"}
+    assert {row["model_version"] for row in rows} == {"stat-2"}
 
 
 def test_the_snapshot_holds_the_chance_the_score_and_the_prediction_as_json(db, cup):

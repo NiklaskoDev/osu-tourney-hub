@@ -20,7 +20,7 @@ from app.repos import scores as scores_repo
 from app.repos import stages as stages_repo
 from app.repos import teams as teams_repo
 from app.repos.predictions import PlanItem
-from app.services import lineup, prediction, sheet
+from app.services import history, lineup, prediction, sheet
 from app.services.prediction import Expectation, MatchPrediction, SeedEstimate, SeriesResult
 from app.services.schedule import UNKNOWN_TEAM, teams_by_id
 from app.services.tournament_settings import effective_lineup_size
@@ -159,7 +159,11 @@ def build_matchup(conn: sqlite3.Connection, tournament: Tournament, match: Match
         return MatchupView(match, stage, left, right, we_play, [], None, plan, notice, None)
     model = load_model(conn, tournament, stage, [left.id, right.id])
     result = prediction.predict_match(
-        model.pool, stage, model.expectations[left.id], model.expectations[right.id]
+        model.pool,
+        stage,
+        model.expectations[left.id],
+        model.expectations[right.id],
+        _habits(conn, tournament, match, left.id, right.id),
     )
     format_notice = None
     if result.with_data == 0:
@@ -168,6 +172,16 @@ def build_matchup(conn: sqlite3.Connection, tournament: Tournament, match: Match
         format_notice = NO_FORMAT
     return MatchupView(
         match, stage, left, right, we_play, model.pool, result, plan, None, format_notice
+    )
+
+
+def _habits(
+    conn: sqlite3.Connection, tournament: Tournament, match: Match, left_id: int, right_id: int
+) -> tuple[prediction.Habits | None, prediction.Habits | None]:
+    """How both teams picked and banned in the matches played before this one."""
+    return (
+        history.habits(conn, tournament.id, left_id, match.id, match.scheduled_at),
+        history.habits(conn, tournament.id, right_id, match.id, match.scheduled_at),
     )
 
 
@@ -269,12 +283,17 @@ def build_pickems(conn: sqlite3.Connection, tournament: Tournament, stage: Stage
     ready = [m for m in matches if m.team1_id in teams and m.team2_id in teams]
     team_ids = sorted({team_id for m in ready for team_id in (m.team1_id, m.team2_id) if team_id})
     model = load_model(conn, tournament, stage, team_ids) if ready and stage.pool_released else None
-    rows = [_pickem_row(match, teams, stage, model) for match in matches]
+    rows = [_pickem_row(conn, tournament, match, teams, stage, model) for match in matches]
     return PickemsView(stage, rows)
 
 
 def _pickem_row(
-    match: Match, teams: dict[int, Team], stage: Stage, model: StageModel | None
+    conn: sqlite3.Connection,
+    tournament: Tournament,
+    match: Match,
+    teams: dict[int, Team],
+    stage: Stage,
+    model: StageModel | None,
 ) -> PickemRow:
     team1 = teams.get(match.team1_id) if match.team1_id else None
     team2 = teams.get(match.team2_id) if match.team2_id else None
@@ -289,7 +308,11 @@ def _pickem_row(
     if model is None:
         return PickemRow(match, title, None, None, None, 0, 0, played, "Pool not published yet")
     forecast = prediction.predict_match(
-        model.pool, stage, model.expectations[team1.id], model.expectations[team2.id]
+        model.pool,
+        stage,
+        model.expectations[team1.id],
+        model.expectations[team2.id],
+        _habits(conn, tournament, match, team1.id, team2.id),
     )
     reason = None
     if forecast.with_data == 0:
