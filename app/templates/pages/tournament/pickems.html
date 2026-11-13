@@ -1,0 +1,56 @@
+{% extends "layout/tournament.html" %}
+{% from "components/copy_button.html" import copy_button %}
+{% from "components/countdown.html" import local_time %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/table.html" import table %}
+{% from "components/tabs.html" import tabs %}
+{% block title %}Pickems - {{ tournament.name }} - {% endblock %}
+
+{% block tournament_content %}
+<div class="page__header">
+  <h1>Pickems</h1>
+  <p class="muted">{{ tournament.name }}</p>
+</div>
+
+{% if stage_tabs %}{{ tabs("Stages", stage_tabs) }}{% endif %}
+
+{% if not stage %}
+{{ empty_state("This tournament has no stages yet." ~ (" They appear here after the next wybin sync." if tournament.source == "wybin" else "")) }}
+{% elif not pickems.rows %}
+{{ empty_state("No matches are listed for this stage." ~ (" They appear here after the next wybin sync." if tournament.source == "wybin" else " Matches come from wybin; this tournament was created by hand, so there are none.")) }}
+{% else %}
+<p class="muted">The likelier winner of every match of {{ stage.name }}, with the chance and the most likely score. It comes from the scores of both teams on this stage's pool; the more maps have scores, the more it can be trusted.</p>
+<div>{{ copy_button(pickems.copy_text, "Copy as text") }}</div>
+
+{% call table("Predicted winner of every match in " ~ stage.name) %}
+<thead>
+  <tr>
+    <th scope="col">Match</th>
+    <th scope="col">Starts</th>
+    <th scope="col">Predicted winner</th>
+    <th scope="col" class="is-numeric">Chance</th>
+    <th scope="col" class="is-numeric">Score</th>
+    <th scope="col" class="is-numeric">Maps with data</th>
+    <th scope="col" class="is-numeric">Result</th>
+  </tr>
+</thead>
+<tbody>
+  {% for row in pickems.rows %}
+  <tr>
+    <th scope="row"><a href="/t/{{ tournament.id }}/matches/{{ row.match.id }}">{{ row.title }}</a>{% if row.match.label %}<span class="cell-sub muted">{{ row.match.label }}</span>{% endif %}</th>
+    <td>{% if row.match.scheduled_at %}{{ local_time(row.match.scheduled_at) }}{% else %}<span class="muted">Not scheduled yet</span>{% endif %}</td>
+    {% if row.winner %}
+    <td>{{ row.winner }}</td>
+    <td class="is-numeric"><span class="num">{{ row.win_chance|fmt_pct }}</span></td>
+    <td class="is-numeric"><span class="num">{{ row.score }}</span></td>
+    <td class="is-numeric"><span class="num">{{ row.with_data }}</span> <span class="muted">of {{ row.total }}</span></td>
+    {% else %}
+    <td colspan="4"><span class="muted">No prediction: {{ row.reason|lower }}</span></td>
+    {% endif %}
+    <td class="is-numeric">{% if row.result %}<span class="num">{{ row.result }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</tbody>
+{% endcall %}
+{% endif %}
+{% endblock %}

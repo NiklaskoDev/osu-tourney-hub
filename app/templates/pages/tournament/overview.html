@@ -22,6 +22,8 @@
   {% if tournament.source == "wybin" %}<div><dt>Last synced from wybin</dt><dd>{% if tournament.last_synced_at %}{{ local_time(tournament.last_synced_at) }}{% else %}<span class="muted">Never</span>{% endif %}</dd></div>{% endif %}
 </dl>
 
+{% if seed %}<p><strong>{{ seed.text }}</strong> <span class="muted">from the {{ seed.stage_name }} pool and the scores there are.</span></p>{% endif %}
+
 <section class="stack" aria-labelledby="stages-heading">
   <h2 id="stages-heading">Stages</h2>
   {% if stages %}

@@ -44,6 +44,9 @@ Sections per version: Added, Changed, Fixed, Removed, Security.
 - Coverage page: who has a score on which map, the likely lineup, flags for maps without enough scores, and practice targets that captains set per team or player (shown as met or missed).
 - The Pool page's per-map score list marks lazer scores like the sheet does.
 - Styleguide and the availability cell: the cell's accessible name carries its state ("Mon 16 Nov 18:00: Yes").
+- Match page (`/t/<id>/matches/<match>`, linked from the Schedule): both teams compared map by map with the expected score of each (the sum of their best players' best scores), the chance to win each map, and how solid the data is (actual, estimated from a player's other maps, or no data). A pick/ban simulation shows the predicted protects, bans and picks for both first-pick orders, the chance to win the series and the most likely score. Captains of a team in the match save a plan of protects, bans and picks with notes (migration 0007); everyone reads it. The first view of a match each day, and every change of the plan, keeps a prediction snapshot (model `stat-1`). "Pull scores" for the opponent is also on this page.
+- Pickems page: the likelier winner, chance and most likely score for every match of a stage, with the real result once played and a "Copy as text" button.
+- Estimated qualifier seed ("Estimated seed: n of m, based on k teams with data") on the tournament overview and the match page while a qualifier stage with a published pool is running; teams with scores on fewer than half of the maps are left out.
 
 ### Changed
 - Archiving a hidden tournament is refused until it is restored, mirroring hiding an archived one.

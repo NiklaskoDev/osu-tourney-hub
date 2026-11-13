@@ -1,0 +1,8 @@
+{#- Artist - title [difficulty], truncated with the full text as a tooltip; "Map not announced" for a placeholder. -#}
+{% macro map_name(pool_map) -%}
+{%- if pool_map.title -%}
+<span class="map-name" title="{{ pool_map.artist }} - {{ pool_map.title }} [{{ pool_map.version }}]">{{ pool_map.artist }} - {{ pool_map.title }}{% if pool_map.version %} [{{ pool_map.version }}]{% endif %}</span>
+{%- else -%}
+<span class="muted">Map not announced</span>
+{%- endif -%}
+{%- endmacro %}

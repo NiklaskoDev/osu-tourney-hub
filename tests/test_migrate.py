@@ -34,6 +34,9 @@ EXPECTED_TABLES = {
     "scan_gaps",
     "scan_stats",
     "practice_targets",
+    "plan_items",
+    "predictions",
+    "match_events",
 }
 
 
@@ -694,3 +697,121 @@ def test_targets_leave_with_their_tournament(migrated):
     migrated.execute("DELETE FROM tournaments WHERE id = ?", (tid,))
 
     assert migrated.execute("SELECT COUNT(*) FROM practice_targets").fetchone()[0] == 0
+
+
+# --- 0007: plan, predictions and match events ---
+
+PLAN_INSERT = (
+    "INSERT INTO plan_items (match_id, kind, pool_map_id, position, note) VALUES (?, ?, ?, ?, ?)"
+)
+PREDICTION_INSERT = (
+    "INSERT INTO predictions (match_id, kind, created_at, win_prob_team1, payload, model_version) "
+    "VALUES (?, ?, 'x', ?, '{}', 'stat-1')"
+)
+EVENT_INSERT = (
+    "INSERT INTO match_events (match_id, seq, kind, team_side, winner_side, source) "
+    "VALUES (?, ?, ?, ?, ?, ?)"
+)
+
+
+def _match(migrated, tournament_id: int) -> int:
+    cursor = migrated.execute(
+        "INSERT INTO matches (tournament_id, status, updated_at) VALUES (?, 'scheduled', 'x')",
+        (tournament_id,),
+    )
+    return int(cursor.lastrowid)
+
+
+def test_a_plan_item_is_one_kind_and_position_per_match_and_needs_a_known_kind(migrated):
+    tid = _tournament(migrated)
+    pool_map = _pool_map(migrated, tid)
+    match = _match(migrated, tid)
+    migrated.execute(PLAN_INSERT, (match, "ban", pool_map, 1, None))
+    migrated.execute(PLAN_INSERT, (match, "pick", pool_map, 1, None))  # same position, other kind
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(PLAN_INSERT, (match, "ban", pool_map, 1, None))
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(PLAN_INSERT, (match, "tiebreaker", pool_map, 1, None))
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(PLAN_INSERT, (match, "ban", pool_map, 0, None))
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(PLAN_INSERT, (match, "ban", pool_map, 2, "x" * 301))
+
+
+def test_a_plan_leaves_with_its_match_and_with_its_map(migrated):
+    tid = _tournament(migrated)
+    pool_map = _pool_map(migrated, tid)
+    match = _match(migrated, tid)
+    migrated.execute(PLAN_INSERT, (match, "ban", pool_map, 1, None))
+    migrated.execute("DELETE FROM pool_maps WHERE id = ?", (pool_map,))
+    assert migrated.execute("SELECT COUNT(*) FROM plan_items").fetchone()[0] == 0
+
+    other_map = _pool_map(migrated, tid)
+    migrated.execute(PLAN_INSERT, (match, "ban", other_map, 1, None))
+    migrated.execute("DELETE FROM matches WHERE id = ?", (match,))
+    assert migrated.execute("SELECT COUNT(*) FROM plan_items").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    ("kind", "chance", "ok"),
+    [
+        ("stat", 0.0, True),
+        ("ai", 1.0, True),
+        ("stat", 1.01, False),
+        ("stat", -0.1, False),
+        ("guess", 0.5, False),
+    ],
+)
+def test_a_prediction_has_a_known_kind_and_a_chance_between_zero_and_one(
+    migrated, kind, chance, ok
+):
+    match = _match(migrated, _tournament(migrated))
+
+    if ok:
+        migrated.execute(PREDICTION_INSERT, (match, kind, chance))
+    else:
+        with pytest.raises(sqlite3.IntegrityError):
+            migrated.execute(PREDICTION_INSERT, (match, kind, chance))
+
+
+def test_predictions_and_events_leave_with_their_match(migrated):
+    match = _match(migrated, _tournament(migrated))
+    migrated.execute(PREDICTION_INSERT, (match, "stat", 0.5))
+    migrated.execute(EVENT_INSERT, (match, 1, "pick", 1, 2, "wybin"))
+
+    migrated.execute("DELETE FROM matches WHERE id = ?", (match,))
+
+    assert migrated.execute("SELECT COUNT(*) FROM predictions").fetchone()[0] == 0
+    assert migrated.execute("SELECT COUNT(*) FROM match_events").fetchone()[0] == 0
+
+
+def test_a_match_event_is_one_row_per_sequence_number_with_known_values(migrated):
+    match = _match(migrated, _tournament(migrated))
+    migrated.execute(EVENT_INSERT, (match, 1, "ban", 1, None, "mp"))
+    migrated.execute(EVENT_INSERT, (match, 2, "pick", None, 1, "manual"))  # side may be unknown
+
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(EVENT_INSERT, (match, 1, "pick", 2, 2, "mp"))
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(EVENT_INSERT, (match, 3, "swap", 1, 1, "mp"))
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(EVENT_INSERT, (match, 3, "pick", 3, 1, "mp"))
+    with pytest.raises(sqlite3.IntegrityError):
+        migrated.execute(EVENT_INSERT, (match, 3, "pick", 1, 1, "guess"))
+
+
+def test_a_match_event_keeps_its_row_when_its_map_is_deleted(migrated):
+    tid = _tournament(migrated)
+    pool_map = _pool_map(migrated, tid)
+    match = _match(migrated, tid)
+    migrated.execute(
+        "INSERT INTO match_events (match_id, seq, kind, pool_map_id, beatmap_id, source) "
+        "VALUES (?, 1, 'pick', ?, 5, 'mp')",
+        (match, pool_map),
+    )
+
+    migrated.execute("DELETE FROM pool_maps WHERE id = ?", (pool_map,))
+
+    row = migrated.execute("SELECT pool_map_id, beatmap_id FROM match_events").fetchone()
+    assert tuple(row) == (None, 5)

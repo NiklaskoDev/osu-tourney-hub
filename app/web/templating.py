@@ -34,6 +34,11 @@ def fmt_acc(value: float | None) -> str:
     return "-" if value is None else f"{value:.2f}%"
 
 
+def fmt_pct(value: float | None) -> str:
+    """A chance (0 to 1) as a whole percentage."""
+    return "-" if value is None else f"{round(value * 100)}%"
+
+
 def fmt_length(seconds: int | None) -> str:
     """Map length as m:ss."""
     if seconds is None:
@@ -43,6 +48,7 @@ def fmt_length(seconds: int | None) -> str:
 
 templates.env.filters["fmt_score"] = fmt_score
 templates.env.filters["fmt_acc"] = fmt_acc
+templates.env.filters["fmt_pct"] = fmt_pct
 templates.env.filters["fmt_length"] = fmt_length
 templates.env.filters["utc_iso"] = to_utc_iso
 

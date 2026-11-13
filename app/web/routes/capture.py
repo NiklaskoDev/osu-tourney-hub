@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse, Response
 
 from app.clock import Clock
 from app.domain.parsing import parse_uint
+from app.repos import matches as matches_repo
 from app.repos import teams as teams_repo
 from app.services import score_capture
 from app.web.deps import (
@@ -93,7 +94,8 @@ async def capture_team_scores(
     clock: Clock = Depends(get_clock),
 ) -> Response:
     """Queue every player of one team (an opponent, usually) for the current and next stage.
-    The schedule page asks to come back to itself with `return_to=schedule`."""
+    The schedule page asks to come back to itself with `return_to=schedule`, a match page with
+    `return_to=match-<id>`."""
     team = teams_repo.get(db, team_id)
     if team is None or team.tournament_id != access.tournament.id:
         raise UserFacingError(404, "This team is not in this tournament.")
@@ -106,5 +108,20 @@ async def capture_team_scores(
         _start_pull(request, background)
     else:
         flash(request, "info", f"{team.name} has no players or there are no maps to pull for yet.")
-    back = f"/t/{access.tournament.id}" + ("/schedule" if return_to == "schedule" else "")
-    return RedirectResponse(back, status_code=303, background=background)
+    return RedirectResponse(
+        _back_to(db, access.tournament.id, return_to), status_code=303, background=background
+    )
+
+
+def _back_to(db: sqlite3.Connection, tournament_id: int, return_to: str) -> str:
+    """Where a pull sends the person back to; anything unknown means the overview."""
+    base = f"/t/{tournament_id}"
+    if return_to == "schedule":
+        return f"{base}/schedule"
+    match_id = (
+        parse_uint(return_to.removeprefix("match-")) if return_to.startswith("match-") else None
+    )
+    match = matches_repo.get(db, match_id) if match_id is not None else None
+    if match is not None and match.tournament_id == tournament_id:
+        return f"{base}/matches/{match.id}"
+    return base

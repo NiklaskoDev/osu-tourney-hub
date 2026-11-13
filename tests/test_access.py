@@ -8,9 +8,11 @@ from app.domain.models import Member, Role
 from app.services.access import effective_role, is_temp_captain_active, role_for, role_label
 from tests.support import (
     ADMIN_ID,
+    add_match,
     add_member,
     add_pool_map,
     add_stage,
+    add_team,
     add_tournament,
     add_user,
 )
@@ -238,6 +240,43 @@ def test_saving_lineups(case, arranged, pool, client, act_as, db):
     assert (copied.status_code, saved.status_code) == (expected_write(case),) * 2, case
     expected_rows = int(case in MANAGERS)
     assert db.execute("SELECT COUNT(*) FROM lineups").fetchone()[0] == expected_rows
+
+
+@pytest.fixture
+def our_match(arranged, db):
+    """A match of our team in a best-of-3 stage with one ban, and its NM1 map."""
+    ours = add_team(db, arranged, "Alpha Squad", ours=True)
+    rivals = add_team(db, arranged, "Rival Crew")
+    stage = add_stage(db, arranged, "Round of 16")
+    db.execute("UPDATE stages SET best_of = 3, bans = 1 WHERE id = ?", (stage,))
+    pool_map = add_pool_map(db, stage, "NM1")
+    match = add_match(db, arranged, ours, rivals, "2026-11-14T18:00:00Z", stage_id=stage)
+    return match, pool_map
+
+
+@pytest.mark.parametrize("case", ROLES)
+def test_viewing_matches_and_pickems(case, arranged, our_match, client, act_as):
+    act_as(case)
+    match, _ = our_match
+
+    for path in (f"/t/{arranged}/matches/{match}", f"/t/{arranged}/pickems"):
+        assert client.get(path, follow_redirects=False).status_code == expected_view(case), path
+
+
+@pytest.mark.parametrize("case", ROLES)
+def test_saving_a_match_plan(case, arranged, our_match, client, act_as, db):
+    token = act_as(case)
+    match, pool_map = our_match
+
+    saved = client.post(
+        f"/t/{arranged}/matches/{match}/plan",
+        data={**token, "ban_1": str(pool_map)},
+        follow_redirects=False,
+    )
+
+    assert saved.status_code == expected_write(case), case
+    rows = db.execute("SELECT COUNT(*) FROM plan_items").fetchone()[0]
+    assert rows == int(case in MANAGERS)
 
 
 def test_a_non_member_cannot_tell_a_real_tournament_from_a_missing_one(client, arranged, act_as):

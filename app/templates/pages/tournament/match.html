@@ -1,0 +1,199 @@
+{% extends "layout/tournament.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/countdown.html" import countdown, local_time %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
+{% from "components/map_name.html" import map_name %}
+{% from "components/table.html" import table %}
+{% block title %}{{ view.title }} - {{ tournament.name }} - {% endblock %}
+
+{% macro slot_list(ids) -%}
+{%- if ids -%}{% for map_id in ids %}{{ badge(maps[map_id].slot) }}{% if not loop.last %} {% endif %}{% endfor %}{%- else -%}<span class="muted">-</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro team_label(side) -%}
+{{ (view.left if side == 1 else view.right).name }}
+{%- endmacro %}
+
+{% macro expected(item) -%}
+{%- if item -%}<span class="num">{{ item.score|fmt_score }}</span>{% if item.estimated %}<span class="cell-sub muted">estimated</span>{% endif %}{%- else -%}<span class="muted" aria-label="No data">-</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro outcome(chance) -%}
+{%- if view.we_play -%}{% if chance >= 0.5 %}<span class="result--win">W</span>{% else %}<span class="result--loss">L</span>{% endif %} {% endif -%}
+<span class="num">{{ chance|fmt_pct }}</span>
+{%- endmacro %}
+
+{% block tournament_content %}
+{% set vals = form_values %}
+{% set ff = form_error_field|default(none) %}
+{% set match = view.match %}
+<div class="page__header">
+  <h1>{{ view.title }}</h1>
+  <p class="muted">
+    {%- set parts = [] -%}
+    {%- if view.stage %}{% set _ = parts.append(view.stage.name) %}{% endif -%}
+    {%- if match.label %}{% set _ = parts.append(match.label) %}{% endif -%}
+    {{ parts|join(", ") }}
+    {%- if match.scheduled_at %}{% if parts %}, {% endif %}{{ local_time(match.scheduled_at) }}{% if match.status != "done" %} (in {{ countdown(match.scheduled_at) }}){% endif %}{% endif %}
+  </p>
+</div>
+
+{% if archived %}
+{% call alert("info", "This tournament is archived") %}The plan is read-only. An administrator can unarchive the tournament.{% endcall %}
+{% endif %}
+{% if form_error and not ff %}
+{% call alert("error", "Plan not saved") %}{{ form_error }}{% endcall %}
+{% endif %}
+{% if seed %}<p><strong>{{ seed.text }}</strong> <span class="muted">from the {{ seed.stage_name }} pool and the scores there are.</span></p>{% endif %}
+
+{% if view.notice %}
+{{ empty_state(view.notice) }}
+{% else %}
+{% set result = view.prediction %}
+{% if view.format_notice %}
+{% call alert("info", "No series prediction") %}{{ view.format_notice }}{% endcall %}
+{% endif %}
+
+<dl class="facts">
+  {% if result.series %}
+  {% set score = result.series.expected_score %}
+  <div>
+    <dt>Chance for {{ view.left.name }}</dt>
+    <dd>{{ outcome(result.series.win_prob) }}</dd>
+  </div>
+  <div>
+    <dt>Most likely score</dt>
+    <dd><span class="num">{{ score[0] }}-{{ score[1] }}</span> <span class="muted">for {{ view.left.name if score[0] > score[1] else view.right.name }}</span></dd>
+  </div>
+  {% endif %}
+  <div><dt>Format</dt><dd>{{ view.stage.format_text or "Not set" }}</dd></div>
+  <div><dt>Maps with data</dt><dd><span class="num">{{ result.with_data }}</span> <span class="muted">of {{ result.total }}</span></dd></div>
+</dl>
+{% if result.with_data < result.total %}
+<p class="muted">The prediction only uses scores from osu! and the lobbies that were found. A map without scores for both teams counts as a coin flip.</p>
+{% endif %}
+{% if access.can_manage and view.we_play and view.right and not archived %}
+<form method="post" action="/t/{{ tournament.id }}/opponents/{{ view.right.id }}/capture">
+  {{ csrf_field(csrf_token) }}
+  <input type="hidden" name="return_to" value="match-{{ match.id }}">
+  <div>{{ button("Pull scores", variant="secondary", type="submit", icon_name="refresh-cw", title="Pull the scores of " ~ view.right.name ~ " from osu!") }}</div>
+</form>
+{% endif %}
+
+<section class="stack" aria-labelledby="compare-heading">
+  <h2 id="compare-heading">Map by map</h2>
+  {% call table("Expected score of both teams on each map") %}
+  <thead>
+    <tr>
+      <th scope="col">Map</th>
+      <th scope="col" class="is-numeric">{{ view.left.name }}</th>
+      <th scope="col" class="is-numeric">{{ view.right.name }}</th>
+      <th scope="col" class="is-numeric">Chance for {{ view.left.name }}</th>
+      <th scope="col">Data</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in result.comparisons %}
+    <tr>
+      <th scope="row">{{ badge(row.pool_map.slot) }} {{ map_name(row.pool_map) }}</th>
+      <td class="is-numeric">{{ expected(row.side1) }}</td>
+      <td class="is-numeric">{{ expected(row.side2) }}</td>
+      <td class="is-numeric">{% if row.prob is not none %}{{ outcome(row.prob) }}{% else %}<span class="muted">No data</span>{% endif %}</td>
+      <td>{{ row.quality|capitalize }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+</section>
+
+<div class="split">
+  {% if result.series %}
+  {% set first = result.series.orders[0] %}
+  <section class="stack" aria-labelledby="predicted-heading">
+    <h2 id="predicted-heading">Predicted protects, bans and picks</h2>
+    {% call table("Predicted protects and bans of both teams") %}
+    <thead>
+      <tr><th scope="col">Team</th><th scope="col">Protects</th><th scope="col">Bans</th></tr>
+    </thead>
+    <tbody>
+      {% for side in (1, 2) %}
+      <tr>
+        <th scope="row">{{ team_label(side) }}</th>
+        <td>{{ slot_list(first.protects[side]) }}</td>
+        <td>{{ slot_list(first.bans[side]) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    {% call table("Predicted pick order for both first-pick orders") %}
+    <thead>
+      <tr>
+        <th scope="col">Pick</th>
+        {% for order in result.series.orders %}<th scope="col">{{ team_label(order.first_pick) }} picks first</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for step in range(result.series.orders|map(attribute="picks")|map("length")|max) %}
+      <tr>
+        <th scope="row">{{ step + 1 }}</th>
+        {% for order in result.series.orders %}
+        <td>{% if step < order.picks|length %}{{ team_label(order.picks[step][0]) }} {{ badge(maps[order.picks[step][1]].slot) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    <p class="muted">Each team protects the maps it is strongest on, bans the other team's strongest unprotected maps and picks its own strongest. Protects and bans are shown for the order where {{ team_label(first.first_pick) }} goes first.</p>
+  </section>
+  {% endif %}
+
+  {% if view.we_play %}
+  <section class="stack" aria-labelledby="plan-heading">
+    <h2 id="plan-heading">Our plan</h2>
+    {% if can_plan %}
+    {% if slots.protects + slots.bans + slots.picks == 0 %}
+    {{ empty_state("This stage has no protects, bans or best-of, so there is nothing to plan.") }}
+    {% else %}
+    <form class="stack" method="post" action="/t/{{ tournament.id }}/matches/{{ match.id }}/plan">
+      {{ csrf_field(csrf_token) }}
+      {% for kind, label in plan_kinds %}
+      {% for slot in range(1, slots.count(kind) + 1) %}
+      {% set map_key = map_field(kind, slot) %}
+      {% set note_key = note_field(kind, slot) %}
+      <div class="row row--top">
+        {{ field(map_key, label ~ " " ~ slot, options=map_options, value=vals.get(map_key, ""), disabled=archived, error=form_error if ff == map_key else none) }}
+        {{ field(note_key, "Note for " ~ label|lower ~ " " ~ slot, value=vals.get(note_key, ""), maxlength="300", autocomplete="off", disabled=archived, error=form_error if ff == note_key else none) }}
+      </div>
+      {% endfor %}
+      {% endfor %}
+      {% if slots.picks == 0 %}<p class="muted">Picks cannot be planned because the stage has no best-of.</p>{% endif %}
+      <div>{{ button("Save plan", variant="primary", type="submit", disabled=archived) }}</div>
+    </form>
+    {% endif %}
+    {% elif view.plan %}
+    {% call table("Our planned protects, bans and picks") %}
+    <thead>
+      <tr><th scope="col">Step</th><th scope="col">Map</th><th scope="col">Note</th></tr>
+    </thead>
+    <tbody>
+      {% for item in view.plan %}
+      <tr>
+        <th scope="row">{{ item.kind|capitalize }} {{ item.position }}</th>
+        <td>{{ badge(maps[item.pool_map_id].slot) }} {{ map_name(maps[item.pool_map_id]) }}</td>
+        <td>{{ item.note or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endcall %}
+    {% else %}
+    {{ empty_state("No plan has been made for this match yet." ~ (" A captain can add one here." if not archived else "")) }}
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

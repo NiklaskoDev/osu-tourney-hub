@@ -49,6 +49,7 @@
       <td>{% if view.match.scheduled_at %}{{ local_time(view.match.scheduled_at) }}<span class="cell-sub muted">in {{ countdown(view.match.scheduled_at) }}</span>{% else %}<span class="muted">Not scheduled yet</span>{% endif %}</td>
       <td>
         <div class="row row--nowrap">
+          {{ button("Compare", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ view.match.id, icon_name="chevron-right") }}
           {% if view.can_find_slot %}{{ button("Find a slot", variant="secondary", href="/t/" ~ tournament.id ~ "/schedule/slots?match=" ~ view.match.id, icon_name="clock", hx_get="/t/" ~ tournament.id ~ "/schedule/slots?match=" ~ view.match.id, hx_target="#slots-panel", hx_swap="innerHTML") }}{% endif %}
           {{ pull_scores(view) }}
         </div>
@@ -74,6 +75,7 @@
       <th scope="col">Stage</th>
       <th scope="col">Played</th>
       <th scope="col">Result</th>
+      <th scope="col"><span class="visually-hidden">Actions</span></th>
     </tr>
   </thead>
   <tbody>
@@ -84,6 +86,7 @@
       <td>{{ view.stage_name or "-" }}</td>
       <td>{% if view.match.scheduled_at %}{{ local_time(view.match.scheduled_at) }}{% else %}<span class="muted">-</span>{% endif %}</td>
       <td>{% if view.result %}{% if view.outcome == "W" %}<span class="result--win">W</span>{% elif view.outcome == "L" %}<span class="result--loss">L</span>{% endif %} <span class="num">{{ view.result }}</span>{% else %}<span class="muted">No result yet</span>{% endif %}</td>
+      <td>{{ button("Compare", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ view.match.id, icon_name="chevron-right") }}</td>
     </tr>
     {% endfor %}
   </tbody>
