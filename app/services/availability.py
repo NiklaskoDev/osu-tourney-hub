@@ -51,6 +51,7 @@ class RangeError(ValueError):
 class Column:
     osu_id: int
     name: str
+    avatar_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,62 @@ class Grid:
     monday: date
     rows: list[GridRow]
     days: list[tuple[str, str]]  # (anchor, label) per local day, for the jump links
+
+
+@dataclass(frozen=True)
+class HourHead:
+    label: str  # "18:00"
+    span: int  # slots in this local hour, normally 2
+
+
+@dataclass(frozen=True)
+class TimelineRun:
+    """Consecutive slots with the same answer, drawn as one bar."""
+
+    state: str
+    span: int
+    start_label: str
+    end_label: str  # "24:00" when the run reaches the end of the day
+
+
+@dataclass(frozen=True)
+class TimelineRow:
+    column: Column
+    filled: bool  # saved at least one Yes or Maybe slot in the shown week
+    runs: list[TimelineRun]
+    summary: str  # spoken text: "Yes 18:00-23:00, Maybe 23:00-24:00, No otherwise"
+
+
+@dataclass(frozen=True)
+class BandRun:
+    """A stretch of the match row. `label` is set on the first run of a match only; `in_match`
+    marks the runs a match covers (a match that began on the previous day has none)."""
+
+    label: str | None
+    span: int
+    in_match: bool = False
+
+
+@dataclass(frozen=True)
+class FreeRun:
+    yes: int
+    maybe: int
+    span: int
+
+
+@dataclass(frozen=True)
+class DayTimeline:
+    day_label: str  # "Monday 16 Nov"
+    anchor: str
+    hours: list[HourHead]
+    rows: list[TimelineRow]
+    bands: list[BandRun]
+    free: list[FreeRun]
+    slot_count: int
+
+    @property
+    def has_match(self) -> bool:
+        return any(run.label for run in self.bands)
 
 
 def parse_state(text: str) -> str:
@@ -181,6 +238,143 @@ def build_grid(
     rows = build_rows(week_slots(monday, zone), zone, columns, availability, bands)
     days = [(row.day_anchor, row.day_label) for row in rows if row.day_label]
     return Grid(monday, rows, days)
+
+
+def build_timelines(
+    monday: date,
+    zone: tzinfo,
+    columns: list[Column],
+    availability: AvailabilityMap,
+    bands: Iterable[MatchBand],
+    filled_ids: set[int],
+) -> list[DayTimeline]:
+    """One timeline per local day of the week: a row of bars per player, the matches and how many
+    are free. A day that the zone shortens or lengthens has 46 or 50 slots."""
+    covered = band_covers(bands)
+    days: dict[date, list[datetime]] = {}
+    for slot in week_slots(monday, zone):
+        days.setdefault(slot.astimezone(zone).date(), []).append(slot)
+    return [
+        _day_timeline(day, slots, zone, columns, availability, covered, filled_ids)
+        for day, slots in days.items()
+    ]
+
+
+def _day_timeline(
+    day: date,
+    slots: list[datetime],
+    zone: tzinfo,
+    columns: list[Column],
+    availability: AvailabilityMap,
+    covered: Mapping[datetime, str | None],
+    filled_ids: set[int],
+) -> DayTimeline:
+    states = {
+        column.osu_id: [
+            availability.get(column.osu_id, {}).get(to_utc_iso(slot), NO) for slot in slots
+        ]
+        for column in columns
+    }
+    rows = []
+    for column in columns:
+        runs = _state_runs(slots, states[column.osu_id], zone, day)
+        rows.append(TimelineRow(column, column.osu_id in filled_ids, runs, _summary(runs)))
+    free = _free_runs(
+        [
+            (
+                sum(states[c.osu_id][i] == YES for c in columns),
+                sum(states[c.osu_id][i] == MAYBE for c in columns),
+            )
+            for i in range(len(slots))
+        ]
+    )
+    return DayTimeline(
+        day_label=datetime.combine(day, datetime.min.time()).strftime("%A %d %b"),
+        anchor=f"day-{day.isoformat()}",
+        hours=_hour_heads(slots, zone),
+        rows=rows,
+        bands=_band_runs(slots, covered),
+        free=free,
+        slot_count=len(slots),
+    )
+
+
+def _hour_heads(slots: list[datetime], zone: tzinfo) -> list[HourHead]:
+    """One head per local hour; built from the slots so a clock change keeps the spans right."""
+    heads: list[tuple[str, int]] = []
+    previous: tuple[date, int] | None = None
+    for slot in slots:
+        local = slot.astimezone(zone)
+        key = (local.date(), local.hour)
+        if key == previous:
+            heads[-1] = (heads[-1][0], heads[-1][1] + 1)
+        else:
+            heads.append((f"{local.hour:02d}:00", 1))
+            previous = key
+    return [HourHead(label, span) for label, span in heads]
+
+
+def _clock_label(moment: datetime, zone: tzinfo, day: date) -> str:
+    local = moment.astimezone(zone)
+    return "24:00" if local.date() != day else local.strftime("%H:%M")
+
+
+def _state_runs(
+    slots: list[datetime], states: list[str], zone: tzinfo, day: date
+) -> list[TimelineRun]:
+    runs: list[TimelineRun] = []
+    first = 0
+    for index in range(1, len(slots) + 1):
+        if index < len(slots) and states[index] == states[first]:
+            continue
+        runs.append(
+            TimelineRun(
+                state=states[first],
+                span=index - first,
+                start_label=_clock_label(slots[first], zone, day),
+                end_label=_clock_label(slots[index - 1] + SLOT, zone, day),
+            )
+        )
+        first = index
+    return runs
+
+
+def _summary(runs: list[TimelineRun]) -> str:
+    parts = [
+        f"{STATE_LABELS[run.state]} {run.start_label}-{run.end_label}"
+        for run in runs
+        if run.state != NO
+    ]
+    if not parts:
+        return "No all day"
+    if any(run.state == NO for run in runs):
+        parts.append("No otherwise")
+    return ", ".join(parts)
+
+
+def _band_runs(slots: list[datetime], covered: Mapping[datetime, str | None]) -> list[BandRun]:
+    runs: list[BandRun] = []
+    for slot in slots:
+        inside = slot in covered
+        label = covered.get(slot)
+        extends = (
+            runs and label is None and runs[-1].in_match == inside
+        )  # an unlabelled slot continues the run before it
+        if extends:
+            runs[-1] = BandRun(runs[-1].label, runs[-1].span + 1, inside)
+        else:
+            runs.append(BandRun(label, 1, inside))
+    return runs
+
+
+def _free_runs(counts: list[tuple[int, int]]) -> list[FreeRun]:
+    runs: list[FreeRun] = []
+    for yes, maybe in counts:
+        if runs and (runs[-1].yes, runs[-1].maybe) == (yes, maybe):
+            runs[-1] = FreeRun(yes, maybe, runs[-1].span + 1)
+        else:
+            runs.append(FreeRun(yes, maybe, 1))
+    return runs
 
 
 def week_bounds(monday: date, zone: tzinfo) -> tuple[datetime, datetime]:

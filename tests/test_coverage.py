@@ -489,3 +489,8 @@ def test_a_tournament_without_stages_maps_or_players_says_what_is_missing(client
 
     add_pool_map(db, stage, "NM1", beatmap_id=5)
     assert "no players on its roster" in client.get(f"/t/{tid}/coverage").text
+
+
+def test_a_target_accuracy_is_not_met_by_a_score_without_accuracy():
+    assert target_met(target(target_acc=90.0), score(accuracy=None)) is False
+    assert target_met(target(target_score=700_000), score(accuracy=None)) is True

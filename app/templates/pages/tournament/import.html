@@ -15,7 +15,6 @@
 {% block tournament_content %}
 <div class="page__header">
   <h1>Import scores</h1>
-  <p class="muted">{{ tournament.name }}</p>
 </div>
 
 {% if archived %}
@@ -135,7 +134,7 @@
 
 <section class="stack" aria-labelledby="file-heading">
   <h2 id="file-heading">From a CSV file</h2>
-  <p class="muted">One row per score. The first row names the columns: a map slot or beatmap id, a player name or osu! id, a score and an accuracy; misses and mods are optional. A file made by "Export CSV" on the pool page works. At most 5000 rows and 1 MB.</p>
+  <p class="muted">One row per score. The first row names the columns: a map slot or beatmap id, a player name or osu! id, a score; accuracy, misses and mods are optional. A file made by "Export CSV" on the pool page works. At most 5000 rows and 1 MB.</p>
   <form class="stack" method="post" action="/t/{{ tournament.id }}/import" enctype="multipart/form-data">
     {{ csrf_field(csrf_token) }}
     <input type="hidden" name="stage" value="{{ stage.id }}">

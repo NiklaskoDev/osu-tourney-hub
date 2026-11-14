@@ -1,0 +1,15 @@
+{#- A two-state switch: the unchecked side reads label_off, the checked side label_on. The input is a
+    real checkbox with role="switch", so it submits `value` when on. Extra keyword arguments become
+    attributes of the input (form -> form="..."). -#}
+{% macro switch(name, label_off, label_on, checked=false, value="1", id=none, disabled=false) -%}
+{%- set control_id = id or name -%}
+{%- set extra -%}
+  {%- for key, attr_value in kwargs.items() %} {{ key|replace("_", "-") }}="{{ attr_value }}"{% endfor -%}
+{%- endset -%}
+<label class="switch" for="{{ control_id }}">
+  <span class="switch__text">{{ label_off }}</span>
+  <input class="switch__input" type="checkbox" role="switch" id="{{ control_id }}" name="{{ name }}" value="{{ value }}"{% if checked %} checked{% endif %}{% if disabled %} disabled{% endif %}{{ extra }}>
+  <span class="switch__track" aria-hidden="true"></span>
+  <span class="switch__text">{{ label_on }}</span>
+</label>
+{%- endmacro %}

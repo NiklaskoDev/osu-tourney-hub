@@ -360,3 +360,30 @@ def test_the_team_average_is_the_mean_of_the_map_means_over_played_maps():
 
 def test_a_team_without_scores_has_no_average():
     assert sheet.team_average(POOL, {}, [1, 2]).mean_score is None
+
+
+# --- scores without an accuracy ---
+
+
+def test_a_score_without_accuracy_loses_a_tie_to_one_with_accuracy():
+    plain = score(101, 1, 800_000, accuracy=None)
+    exact = score(101, 2, 800_000, accuracy=60.0)
+
+    assert sheet.rank_key(plain) < sheet.rank_key(exact)
+    assert best_of([plain, exact])[(1, 1)].overall is plain  # alone it still counts
+
+
+def test_the_average_accuracy_skips_scores_that_have_none():
+    scores = [score(101, 1, 800_000, accuracy=96.0), score(101, 2, 700_000, accuracy=None)]
+
+    team_score, team_accuracy, count = sheet.map_average(NM1, best_of(scores), [1, 2])
+
+    assert (team_score, team_accuracy, count) == (750_000, 96.0, 2)
+
+
+def test_an_average_accuracy_is_empty_when_no_score_has_one():
+    best = best_of([score(101, 1, 800_000, accuracy=None)])
+
+    assert sheet.map_average(NM1, best, [1]) == (800_000, None, 1)
+    assert sheet.personal_average(POOL, best, 1).mean_accuracy is None
+    assert sheet.team_average(POOL, best, [1]).mean_accuracy is None

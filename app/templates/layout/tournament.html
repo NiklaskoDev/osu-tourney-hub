@@ -1,21 +1,26 @@
 {% extends "layout/shell.html" %}
-{#- Tournament pages: left nav on wide screens, a select below 768 px. `nav_current` names the
-    open section. Later phases add their entries to `items`. -#}
+{#- Tournament pages: a left nav pinned to the window edge on wide screens, a select below 768 px.
+    `nav_current` names the open section. -#}
 {% set items = [
   ("overview", "Overview", "/t/" ~ tournament.id),
   ("pool", "Pool", "/t/" ~ tournament.id ~ "/pool"),
   ("lineup", "Lineup", "/t/" ~ tournament.id ~ "/lineup"),
   ("availability", "Availability", "/t/" ~ tournament.id ~ "/availability"),
   ("schedule", "Schedule", "/t/" ~ tournament.id ~ "/schedule"),
+  ("results", "Results", "/t/" ~ tournament.id ~ "/results"),
   ("pickems", "Pickems", "/t/" ~ tournament.id ~ "/pickems"),
   ("lobbies", "Lobbies", "/t/" ~ tournament.id ~ "/lobbies"),
   ("coverage", "Coverage", "/t/" ~ tournament.id ~ "/coverage"),
   ("members", "Members", "/t/" ~ tournament.id ~ "/members"),
 ] %}
 {% if access.can_manage %}{% set items = items + [("settings", "Settings", "/t/" ~ tournament.id ~ "/settings")] %}{% endif %}
-{% block content %}
+{% block main %}
 <div class="tournament-layout">
   <nav class="side-nav" aria-label="{{ tournament.name }}">
+    <div class="side-nav__head">
+      <div class="side-nav__name" title="{{ tournament.name }}">{{ tournament.name }}</div>
+      <div class="side-nav__meta">{% if tournament.acronym %}{{ tournament.acronym }} · {% endif %}{{ tournament.status|capitalize }}</div>
+    </div>
     <ul class="side-nav__list">
       {% for key, label, href in items %}
       <li><a class="side-nav__link" href="{{ href }}"{% if key == nav_current %} aria-current="page"{% endif %}>{{ label }}</a></li>
@@ -30,8 +35,9 @@
       </select>
     </div>
   </nav>
-  <div class="tournament-layout__content stack">
+  <main id="main" class="tournament-layout__content stack">
+    {{ flashes_block(flashes) }}
     {% block tournament_content %}{% endblock %}
-  </div>
+  </main>
 </div>
 {% endblock %}

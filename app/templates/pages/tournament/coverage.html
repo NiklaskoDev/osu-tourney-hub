@@ -29,7 +29,6 @@
 {% set ff = form_error_field|default(none) %}
 <div class="page__header">
   <h1>Coverage</h1>
-  <p class="muted">{{ tournament.name }}</p>
 </div>
 
 {% if stage_tabs %}{{ tabs("Stages", stage_tabs) }}{% endif %}
@@ -51,7 +50,7 @@
 <p class="muted">Who has a score on each map, using {{ scoring_label }} scores from every source. The likely lineup is the current suggestion on the Lineup page: the {{ view.lineup_size }} {{ "player" if view.lineup_size == 1 else "players" }} with the best {{ "score" if view.lineup_size == 1 else "scores" }} on each map.</p>
 
 <div class="sheet">
-{% call table("Practice coverage: best score of each player on each map") %}
+{% call table("Practice coverage: best score of each player on each map", scroll=true) %}
 <thead>
   <tr>
     <th scope="col">Map</th>

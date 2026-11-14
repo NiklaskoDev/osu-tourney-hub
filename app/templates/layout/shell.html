@@ -1,6 +1,15 @@
 {% extends "base.html" %}
 {% from "components/alert.html" import alert %}
 {% from "components/csrf.html" import csrf_field %}
+{% macro flashes_block(flashes) -%}
+{% if flashes %}
+<div class="stack flashes">
+  {% for message in flashes %}
+    {% call alert(message.kind if message.kind in ["error", "success", "warning"] else "info", message.text) %}{% endcall %}
+  {% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}
 {% block body %}
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="topbar">
@@ -11,7 +20,7 @@
       {% if is_admin %}<a href="/admin"{% if nav_current == "admin" %} aria-current="page"{% endif %}>Admin</a><a href="/styleguide">Styleguide</a>{% endif %}
     </nav>
     <div class="topbar__user">
-      {% if user.avatar_url %}<img class="avatar" src="{{ user.avatar_url }}" alt="" width="28" height="28">{% endif %}
+      {% if user.avatar_url %}<img class="avatar avatar--round" src="{{ user.avatar_url }}" alt="" width="28" height="28">{% endif %}
       <a href="/me">{{ user.username }}</a>
       <form method="post" action="/auth/logout">
         {{ csrf_field(csrf_token) }}
@@ -20,14 +29,10 @@
     </div>
     {% endif %}
   </header>
-  <main id="main" class="page">
-    {% if flashes %}
-    <div class="stack flashes">
-      {% for message in flashes %}
-        {% call alert(message.kind if message.kind in ["error", "success", "warning"] else "info", message.text) %}{% endcall %}
-      {% endfor %}
-    </div>
-    {% endif %}
+  {% block main %}
+  <main id="main" class="page{% block page_class %}{% endblock %}">
+    {{ flashes_block(flashes) }}
     {% block content %}{% endblock %}
   </main>
+  {% endblock %}
 {% endblock %}

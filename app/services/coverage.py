@@ -64,7 +64,9 @@ def target_met(target: Target, score: Score | None) -> bool:
         return False
     if target.target_score is not None and score.score < target.target_score:
         return False
-    return target.target_acc is None or score.accuracy >= target.target_acc
+    if target.target_acc is None:
+        return True
+    return score.accuracy is not None and score.accuracy >= target.target_acc
 
 
 def build_coverage(data: StageData, tournament: Tournament, targets: list[Target]) -> CoverageView:

@@ -33,7 +33,7 @@ from app.clients.osu import (
 from app.clients.ratelimit import Priority
 from app.clock import Clock, from_utc_iso, to_utc_iso
 from app.config import Settings
-from app.db.connection import open_db
+from app.db.connection import open_db, transaction
 from app.domain.models import FetchedMatch
 from app.repos import app_settings as app_settings_repo
 from app.repos import jobs as jobs_repo
@@ -205,6 +205,27 @@ class Skimmer:
         logger.warning(
             "The scanner skipped lobby ids %s to %s to catch up with the head", start, end
         )
+
+    def skip_forward(self, conn: sqlite3.Connection, cursor: int) -> bool:
+        """Continue the live scan after lobby id `cursor`, giving up on the ids before it (an
+        admin chose a newer start id). Returns whether the cursor moved: the live cursor can
+        already be past the saved one the plan was made from. Runs on the same event loop as the
+        workers, so no lock is needed; the route that calls it is async and the app has one
+        worker."""
+        if self._dispenser is None:
+            raise StartError(NOT_STARTED)
+        if self._dispenser.cursor >= cursor:
+            return False
+        self._dispenser.skip_to(cursor)
+        self._known_open = {i for i in self._known_open if i > self._dispenser.cursor}
+        self.flush_cursor(conn)
+        return True
+
+    @property
+    def live_cursor(self) -> int | None:
+        """The cursor the workers are at now, or None before the first head check. It can be
+        ahead of the saved one, which is only written every few seconds."""
+        return self._dispenser.cursor if self._dispenser is not None else None
 
     def _stored_cursor(self, conn: sqlite3.Connection) -> int | None:
         state = jobs_repo.get(conn, CURSOR_JOB)
@@ -461,6 +482,94 @@ class Skimmer:
     @staticmethod
     def _minute(moment: datetime) -> str:
         return moment.strftime(MINUTE_FORMAT)
+
+
+# --- start from a lobby id (admin) --------------------------------------------------------------
+
+ENTER_AN_ID = "Enter a lobby id or an osu! match link."
+NOT_STARTED = (
+    "The scanner has not started yet. Try again once it has read the newest lobby id "
+    "(within a minute of starting)."
+)
+
+
+ALREADY_PAST = "The scanner already continues past lobby id {next_id:,}, so nothing was skipped."
+
+
+class StartError(ValueError):
+    """A start id that cannot be used; the message is safe to show."""
+
+
+@dataclass(frozen=True)
+class StartPlan:
+    """What starting from a lobby id does. `backfill` reads [start_id, end_id] in the background
+    with spare budget, `skip` gives up on [start_id, end_id] and carries on live after it, `nothing`
+    means the scanner already continues from this id. `merged_gap_ids` are the skipped ranges a
+    backfill covers and replaces."""
+
+    kind: str
+    start_id: int
+    end_id: int
+    size: int
+    merged_gap_ids: tuple[int, ...] = ()
+
+
+def plan_start(start_id: int, cursor: int | None, head: int | None, gaps: list[Gap]) -> StartPlan:
+    """Decide what an admin's start id means, from the scanner's position. Moving the live cursor
+    back is not done: the next head check would skip ahead again, and reading history at live
+    priority would starve the scan of new lobbies. So an older id becomes a backfill range."""
+    if start_id < 1:
+        raise StartError(ENTER_AN_ID)
+    if cursor is None or head is None:
+        raise StartError(NOT_STARTED)
+    if start_id > head:
+        raise StartError(
+            f"That lobby id is newer than the newest one osu! has listed ({head:,}). "
+            f"Enter an id up to {head:,}."
+        )
+    if start_id == cursor + 1:
+        return StartPlan("nothing", start_id, cursor, 0)
+    if start_id <= cursor:
+        # A finished range stays listed as Done; only unread or running ones are folded in.
+        overlapping = [
+            g for g in gaps if g.start_id <= cursor and g.end_id >= start_id and not g.backfill_done
+        ]
+        first = min([start_id, *(g.start_id for g in overlapping)])
+        last = max([cursor, *(g.end_id for g in overlapping)])
+        return StartPlan(
+            "backfill", first, last, last - first + 1, tuple(g.id for g in overlapping)
+        )
+    return StartPlan("skip", cursor + 1, start_id - 1, start_id - 1 - cursor)
+
+
+def start_from(
+    conn: sqlite3.Connection, skimmer: Skimmer, plan: StartPlan, now: datetime
+) -> int | None:
+    """Apply a plan in one transaction. Returns the new range's id for a backfill. A backfill
+    replaces the skipped ranges it covers (bookkeeping rows, fully inside the new range); a skip
+    keeps what it skips listed, so it can be backfilled later."""
+    if plan.kind == "nothing":
+        return None
+    stamp = to_utc_iso(now)
+    with transaction(conn):
+        if plan.kind == "backfill":
+            scan_repo.delete_gaps(conn, list(plan.merged_gap_ids))
+            gap_id = scan_repo.insert_gap(conn, plan.start_id, plan.end_id, "admin_skip", stamp)
+            scan_repo.request_backfill(conn, gap_id)
+            return gap_id
+        # Memory changes last: if the insert fails, nothing has moved and the transaction rolls
+        # back; if the cursor turns out to be past the target, the insert is rolled back too.
+        scan_repo.insert_gap(conn, plan.start_id, plan.end_id, "admin_skip", stamp)
+        if not skimmer.skip_forward(conn, plan.end_id):
+            raise StartError(ALREADY_PAST.format(next_id=plan.end_id + 1))
+    return None
+
+
+def backfill_eta_minutes(size: int, status: "ScannerStatus") -> float | None:
+    """Rough time to read `size` ids with the budget the live scan leaves over, at about one
+    request per id. None when no budget is spare."""
+    spare = status.budget_per_min - (status.requests_per_min_60 or 0)
+    return size / spare if spare > 0 else None
 
 
 # --- status for the admin page ------------------------------------------------------------------

@@ -38,7 +38,7 @@
     {%- if view.stage %}{% set _ = parts.append(view.stage.name) %}{% endif -%}
     {%- if match.label %}{% set _ = parts.append(match.label) %}{% endif -%}
     {{ parts|join(", ") }}
-    {%- if match.scheduled_at %}{% if parts %}, {% endif %}{{ local_time(match.scheduled_at) }}{% if match.status != "done" %} (in {{ countdown(match.scheduled_at) }}){% endif %}{% endif %}
+    {%- if match.scheduled_at %}{% if parts %}, {% endif %}{{ local_time(match.scheduled_at) }}{% if match.status != "done" %} ({{ countdown(match.scheduled_at, prefix="in ") }}){% endif %}{% endif %}
   </p>
 </div>
 

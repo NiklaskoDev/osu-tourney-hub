@@ -1,10 +1,13 @@
 {#- Label, control, hint and inline error. options = [(value, label), ...] makes a select;
     kind "textarea" makes a textarea. The entered value is kept when an error is shown.
     id defaults to name; give each control its own id when a name repeats on one page.
-    label_hidden keeps the label for screen readers only (compact rows). Extra keyword arguments
+    label_hidden keeps the label for screen readers only (compact rows). inline puts the label
+    beside the control (toolbars); the hint and error stay under the row. hide_optional drops the
+    "(optional)" suffix of a field that is not required, for a filter whose empty choice is a real
+    answer ("All stages"). Extra keyword arguments
     become attributes of the control (data_detect_timezone -> data-detect-timezone). -#}
 {% from "components/icon.html" import icon %}
-{% macro field(name, label, kind="text", value="", hint=none, error=none, required=false, disabled=false, options=none, placeholder="", id=none, label_hidden=false) -%}
+{% macro field(name, label, kind="text", value="", hint=none, error=none, required=false, disabled=false, options=none, placeholder="", id=none, label_hidden=false, inline=false, hide_optional=false) -%}
 {%- set control_id = id or name -%}
 {%- set describedby -%}
   {%- if error %}{{ control_id }}-error{% elif hint %}{{ control_id }}-hint{% endif -%}
@@ -12,8 +15,8 @@
 {%- set extra -%}
   {%- for key, attr_value in kwargs.items() %} {{ key|replace("_", "-") }}="{{ attr_value }}"{% endfor -%}
 {%- endset -%}
-<div class="field{% if error %} field--invalid{% endif %}">
-  <label class="field__label{% if label_hidden %} visually-hidden{% endif %}" for="{{ control_id }}">{{ label }}{% if not required and not label_hidden %} <span class="muted">(optional)</span>{% endif %}</label>
+<div class="field{% if inline %} field--inline{% endif %}{% if error %} field--invalid{% endif %}">
+  <label class="field__label{% if label_hidden %} visually-hidden{% endif %}" for="{{ control_id }}">{{ label }}{% if not required and not label_hidden and not hide_optional %} <span class="muted">(optional)</span>{% endif %}</label>
   {% if options is not none -%}
   <select class="field__control" id="{{ control_id }}" name="{{ name }}"{% if required %} required{% endif %}{% if disabled %} disabled{% endif %}{% if describedby %} aria-describedby="{{ describedby }}"{% endif %}{% if error %} aria-invalid="true"{% endif %}{{ extra }}>
     {%- for option_value, option_label in options %}

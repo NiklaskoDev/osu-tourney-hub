@@ -145,8 +145,29 @@ def next_backfill(conn: sqlite3.Connection) -> Gap | None:
     return Gap(**row) if row else None
 
 
+def delete_gaps(conn: sqlite3.Connection, ids: list[int]) -> None:
+    conn.executemany("DELETE FROM scan_gaps WHERE id = ?", [(gap_id,) for gap_id in ids])
+
+
+def stop_backfill(conn: sqlite3.Connection, gap_id: int) -> bool:
+    """Stop a requested, unfinished backfill and keep what was read: the ids already read leave the
+    range, the rest stays listed (and can be backfilled again). Returns whether a row changed."""
+    cursor = conn.execute(
+        "UPDATE scan_gaps SET start_id = backfilled_until + 1, backfilled_until = NULL "
+        "WHERE id = ? AND backfilled_until IS NOT NULL AND backfilled_until < end_id",
+        (gap_id,),
+    )
+    return cursor.rowcount == 1
+
+
 def set_backfilled_until(conn: sqlite3.Connection, gap_id: int, last_id: int) -> None:
-    conn.execute("UPDATE scan_gaps SET backfilled_until = ? WHERE id = ?", (last_id, gap_id))
+    """Record backfill progress. Only while the backfill is still requested and only forwards: a
+    worker that finished an id after an admin stopped the backfill must not restart it."""
+    conn.execute(
+        "UPDATE scan_gaps SET backfilled_until = ? "
+        "WHERE id = ? AND backfilled_until IS NOT NULL AND backfilled_until < ?",
+        (last_id, gap_id, last_id),
+    )
 
 
 # --- per-minute counters --------------------------------------------------------------------

@@ -10,7 +10,7 @@
   <h1>{{ state.title }}</h1>
   <p class="muted">
     Live view
-    {%- if match.scheduled_at %}, {{ local_time(match.scheduled_at) }}{% if match.status != "done" %} (in {{ countdown(match.scheduled_at) }}){% endif %}{% endif %}
+    {%- if match.scheduled_at %}, {{ local_time(match.scheduled_at) }}{% if match.status != "done" %} ({{ countdown(match.scheduled_at, prefix="in ") }}){% endif %}{% endif %}
   </p>
 </div>
 

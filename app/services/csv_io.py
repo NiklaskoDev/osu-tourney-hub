@@ -27,7 +27,7 @@ from app.services import pool_sheet, sheet
 from app.services.csv_text import CsvTable, clean_cell, guard_cell
 from app.services.score_entry import (
     EntryError,
-    parse_accuracy,
+    parse_optional_accuracy,
     parse_optional_count,
     parse_score,
 )
@@ -71,7 +71,7 @@ _ALIASES = {
 MAPPING_PREFIX = "map_"
 MAP_FIELDS = ("slot", "beatmap")
 PLAYER_FIELDS = ("player", "osu_id")
-REQUIRED_FIELDS = ("score", "accuracy")
+REQUIRED_FIELDS = ("score",)  # accuracy may be empty, as the export writes it
 _MOD_SEPARATORS = re.compile(r"[\s,+/]")  # "HD, HR" and "HD+HR" both mean HDHR
 
 Mapping = dict[str, int | None]  # import field -> column index in the file
@@ -97,7 +97,7 @@ def export_pool(conn: sqlite3.Connection, tournament: Tournament, stage: Stage) 
                     _name(player),
                     player.osu_id,
                     best.score,
-                    f"{best.accuracy:.2f}",
+                    "" if best.accuracy is None else f"{best.accuracy:.2f}",
                     best.misses,
                     display_mods(best.mods),
                     best.source,
@@ -210,7 +210,7 @@ class PlannedScore:
     beatmap_id: int
     mods: str
     score: int
-    accuracy: float
+    accuracy: float | None
     misses: int | None
 
 
@@ -345,7 +345,7 @@ def _read_row(line: int, row: list[str], mapping: Mapping, lookup: _Lookup) -> P
     member = _resolve_player(cell("osu_id"), cell("player"), lookup)
     try:
         score = parse_score(cell("score"))
-        accuracy = parse_accuracy(cell("accuracy"))
+        accuracy = parse_optional_accuracy(cell("accuracy"))
         misses = parse_optional_count(cell("misses"), "misses", "Misses")
     except EntryError as problem:
         raise _RowError(problem.message) from problem

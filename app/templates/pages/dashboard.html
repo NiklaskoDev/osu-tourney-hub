@@ -3,12 +3,26 @@
 {% from "components/badge.html" import badge %}
 {% from "components/button.html" import button %}
 {% from "components/empty_state.html" import empty_state %}
+{% from "partials/upcoming.html" import upcoming_list %}
 {% block title %}Tournaments - {% endblock %}
 {% block content %}
 <div class="page__header">
   <h1>Tournaments</h1>
   {% if viewer_is_admin %}<div class="row"><p class="muted">You are an administrator, so you see every tournament.</p>{{ button("Add tournament", variant="primary", href="/admin", icon_name="plus") }}</div>{% endif %}
 </div>
+<div class="stack stack--loose">
+{% if show_upcoming %}
+<section class="stack" aria-labelledby="upcoming-heading">
+  <h2 id="upcoming-heading">Upcoming matches</h2>
+  {% if upcoming %}
+  {{ upcoming_list(upcoming) }}
+  {% else %}
+  {{ empty_state("No upcoming matches in your tournaments. They appear here once wybin lists a time for them.") }}
+  {% endif %}
+</section>
+{% endif %}
+<section class="stack">
+{% if show_upcoming %}<h2>Your tournaments</h2>{% endif %}
 {% if rows %}
 {% call table("Tournaments") %}
 <thead>
@@ -33,4 +47,6 @@
 {% else %}
 {{ empty_state("You are not on a tournament roster yet. A captain or an administrator adds you when your team's tournament is set up.") }}
 {% endif %}
+</section>
+</div>
 {% endblock %}

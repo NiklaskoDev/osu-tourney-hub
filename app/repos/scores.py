@@ -24,7 +24,7 @@ class NewScore:
     mods: str
     score: int
     scoring: str
-    accuracy: float
+    accuracy: float | None
     max_combo: int | None
     misses: int | None
     source_url: str | None
@@ -150,6 +150,15 @@ def list_for_beatmaps(
         + f"WHERE gamemode = ? AND beatmap_id IN ({beatmap_marks}) AND osu_id IN ({player_marks}) "
         "ORDER BY id",
         [gamemode, *beatmap_ids, *osu_ids],
+    ).fetchall()
+    return [_score(row) for row in rows]
+
+
+def list_mp_for_lobby(conn: sqlite3.Connection, mp_match_id: int) -> list[Score]:
+    """The scores stored from one multiplayer lobby (`source_ref` is "<lobby>:<game>")."""
+    rows = conn.execute(
+        _SELECT + "WHERE source = 'mp' AND source_ref LIKE ? ORDER BY achieved_at, id",
+        (f"{mp_match_id}:%",),
     ).fetchall()
     return [_score(row) for row in rows]
 

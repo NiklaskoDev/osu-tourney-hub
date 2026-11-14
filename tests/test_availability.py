@@ -449,3 +449,164 @@ def test_an_invalid_saved_timezone_is_skipped():
     view = availability.view_zone("local", "Mars/Olympus", "Asia/Tokyo")
 
     assert view.name == "Asia/Tokyo"
+
+
+# --- the timeline view ---------------------------------------------------------------------------
+
+MONDAY = date(2026, 11, 16)
+ALICE, BOB, CARA = Column(1, "Alice"), Column(2, "Bob"), Column(3, "Cara")
+
+
+def timelines(columns, found, bands=(), filled=frozenset(), zone=UTC, monday=MONDAY):
+    return availability.build_timelines(monday, zone, columns, found, list(bands), set(filled))
+
+
+def run_of(row, state):
+    return [r for r in row.runs if r.state == state]
+
+
+def test_a_week_has_one_timeline_per_day_with_48_slots_each():
+    days = timelines([ALICE], {})
+
+    assert len(days) == 7
+    assert [d.day_label for d in days][:2] == ["Monday 16 Nov", "Tuesday 17 Nov"]
+    assert {d.slot_count for d in days} == {48}
+    assert days[0].anchor == "day-2026-11-16"
+
+
+def test_neighbouring_slots_with_the_same_answer_become_one_run():
+    found = merged(
+        free(1, "yes", utc(2026, 11, 16, 18, 0), 10), free(1, "maybe", utc(2026, 11, 16, 23, 0), 1)
+    )
+
+    row = timelines([ALICE], found, filled={1})[0].rows[0]
+
+    assert [(r.state, r.span) for r in row.runs] == [
+        ("no", 36),
+        ("yes", 10),
+        ("maybe", 1),
+        ("no", 1),
+    ]
+    assert (row.runs[1].start_label, row.runs[1].end_label) == ("18:00", "23:00")
+
+
+def test_the_spans_of_every_row_add_up_to_the_slot_count_each_day():
+    found = merged(
+        free(1, "yes", utc(2026, 11, 16, 18, 0), 6), free(2, "maybe", utc(2026, 11, 17, 0, 0), 3)
+    )
+    band = MatchBand(utc(2026, 11, 16, 19, 30), "vs Rival")
+
+    for day in timelines([ALICE, BOB], found, [band]):
+        assert sum(h.span for h in day.hours) == day.slot_count
+        assert sum(r.span for r in day.bands) == day.slot_count
+        assert sum(r.span for r in day.free) == day.slot_count
+        for row in day.rows:
+            assert sum(r.span for r in row.runs) == day.slot_count
+
+
+def test_a_run_that_reaches_midnight_ends_at_24_00():
+    found = free(1, "yes", utc(2026, 11, 16, 22, 0), 4)
+
+    row = timelines([ALICE], found)[0].rows[0]
+
+    assert (run_of(row, "yes")[0].start_label, run_of(row, "yes")[0].end_label) == (
+        "22:00",
+        "24:00",
+    )
+
+
+def test_the_spoken_summary_names_each_answer_and_what_is_left():
+    found = merged(
+        free(1, "yes", utc(2026, 11, 16, 18, 0), 10), free(1, "maybe", utc(2026, 11, 16, 23, 0), 2)
+    )
+
+    row = timelines([ALICE], found)[0].rows[0]
+
+    assert row.summary == "Yes 18:00-23:00, Maybe 23:00-24:00, No otherwise"
+
+
+def test_the_summary_of_a_day_without_answers_says_no_all_day():
+    assert timelines([ALICE], {})[0].rows[0].summary == "No all day"
+
+
+def test_the_summary_of_a_day_that_is_all_yes_has_no_otherwise():
+    found = free(1, "yes", utc(2026, 11, 16, 0, 0), 48)
+
+    assert timelines([ALICE], found)[0].rows[0].summary == "Yes 00:00-24:00"
+
+
+def test_filled_is_true_exactly_for_the_given_ids():
+    rows = timelines([ALICE, BOB, CARA], {}, filled={1, 3})[0].rows
+
+    assert [(r.column.name, r.filled) for r in rows] == [
+        ("Alice", True),
+        ("Bob", False),
+        ("Cara", True),
+    ]
+
+
+def test_only_the_first_run_of_a_match_carries_its_label():
+    band = MatchBand(utc(2026, 11, 16, 19, 30), "vs Rival")
+
+    runs = timelines([ALICE], {}, [band])[0].bands
+
+    assert [(r.label, r.span, r.in_match) for r in runs] == [
+        (None, 39, False),
+        ("vs Rival", 3, True),
+        (None, 6, False),
+    ]
+
+
+def test_a_match_that_began_the_day_before_continues_without_a_label():
+    band = MatchBand(utc(2026, 11, 16, 23, 30), "vs Rival")
+
+    runs = timelines([ALICE], {}, [band])[1].bands
+
+    assert (runs[0].label, runs[0].in_match, runs[0].span) == (None, True, 2)
+    assert not any(r.label for r in runs)
+
+
+def test_a_day_without_a_match_has_no_match_row():
+    band = MatchBand(utc(2026, 11, 16, 19, 30), "vs Rival")
+
+    days = timelines([ALICE], {}, [band])
+
+    assert days[0].has_match and not days[1].has_match
+
+
+def test_free_runs_merge_equal_counts_and_count_yes_and_maybe_apart():
+    found = merged(
+        free(1, "yes", utc(2026, 11, 16, 18, 0), 4),
+        free(2, "yes", utc(2026, 11, 16, 19, 0), 4),
+        free(3, "maybe", utc(2026, 11, 16, 19, 0), 2),
+    )
+
+    runs = timelines([ALICE, BOB, CARA], found)[0].free
+
+    assert [(r.yes, r.maybe, r.span) for r in runs] == [
+        (0, 0, 36),
+        (1, 0, 2),
+        (2, 1, 2),
+        (1, 0, 2),
+        (0, 0, 6),
+    ]
+
+
+def test_a_day_the_clocks_go_back_has_50_slots_and_the_hour_spans_add_up():
+    days = timelines([ALICE], {}, zone=BERLIN, monday=date(2026, 10, 19))
+
+    sunday = days[-1]
+    assert (sunday.day_label, sunday.slot_count) == ("Sunday 25 Oct", 50)
+    assert sum(h.span for h in sunday.hours) == 50
+    assert [h.span for h in sunday.hours if h.label == "02:00"] == [
+        4
+    ]  # the hour that happens twice
+    assert sum(r.span for r in sunday.rows[0].runs) == 50
+
+
+def test_a_day_the_clocks_go_forward_has_46_slots():
+    days = timelines([ALICE], {}, zone=BERLIN, monday=date(2026, 3, 23))
+
+    sunday = days[-1]
+    assert sunday.slot_count == 46
+    assert sum(h.span for h in sunday.hours) == 46

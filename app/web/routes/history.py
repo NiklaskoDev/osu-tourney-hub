@@ -3,7 +3,7 @@ habits of an opponent."""
 
 import sqlite3
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from app.clients.osu import OsuClient, OsuError, OsuNotFound
@@ -36,12 +36,12 @@ def _correctable_match(db: sqlite3.Connection, access: TournamentAccess, mid: st
     """The match, when this person may change its history: an admin any match, a captain only
     one our team plays in (as for the plan)."""
     match = find_match(db, access, mid)
-    if not _may_correct(access, match):
+    if not may_correct(access, match):
         raise UserFacingError(409, NOT_YOUR_MATCH)
     return match
 
 
-def _may_correct(access: TournamentAccess, match: Match) -> bool:
+def may_correct(access: TournamentAccess, match: Match) -> bool:
     return access.is_admin or match.involves(access.tournament.our_team_id)
 
 
@@ -64,7 +64,7 @@ def _review_page(
         "nav_current": "schedule",
         "archived": archived,
         "view": view,
-        "can_edit": access.can_manage and not archived and _may_correct(access, match),
+        "can_edit": access.can_manage and not archived and may_correct(access, match),
         "side_options": sides,
         "winner_options": [("", "No winner")] + sides[1:],
         "map_options": [("", "No map")]
@@ -95,24 +95,27 @@ async def review_page(
 async def refresh_lobby(
     request: Request,
     mid: str,
+    return_to: str = Form(""),
     access: TournamentAccess = Depends(captain_access),
     _writable: TournamentAccess = Depends(require_writable),
     db: sqlite3.Connection = Depends(get_db),
     osu: OsuClient = Depends(get_osu),
 ) -> Response:
-    """Read the match's lobby again and rebuild the picks from it."""
+    """Read the match's lobby again and rebuild the picks from it. `return_to=stats` goes back to
+    the stats page, anything else to the review page."""
     match = _correctable_match(db, access, mid)
     if match.mp_match_id is None:
         raise UserFacingError(409, NO_LOBBY)
     try:
-        count = await history.refresh_from_lobby(db, osu, match)
+        count = await history.refresh_from_lobby(db, osu, match, request.app.state.clock.now())
     except OsuNotFound:
         flash(request, "error", LOBBY_MISSING)
     except OsuError:
         flash(request, "error", OSU_DOWN)
     else:
         flash(request, "success", f"Lobby read: {count} played maps found.")
-    return RedirectResponse(f"/t/{access.tournament.id}/matches/{match.id}/review", 303)
+    page = "stats" if return_to == "stats" else "review"
+    return RedirectResponse(f"/t/{access.tournament.id}/matches/{match.id}/{page}", 303)
 
 
 @router.post("/matches/{mid}/events")

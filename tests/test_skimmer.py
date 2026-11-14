@@ -2,6 +2,7 @@
 
 import asyncio
 import dataclasses
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -1044,3 +1045,337 @@ async def test_an_open_lobby_that_vanished_is_marked_complete_but_keeps_what_was
     assert scan_repo.list_open(db) == []
     assert db.execute("SELECT is_complete FROM lobbies").fetchone()[0] == 1
     assert db.execute("SELECT COUNT(*) FROM lobby_pool_hits").fetchone()[0] == 1
+
+
+# --- starting from a lobby id (admin) ---
+
+from app.repos.scan import Gap  # noqa: E402
+from app.services.skimmer import (  # noqa: E402
+    StartError,
+    StartPlan,
+    backfill_eta_minutes,
+    plan_start,
+    scanner_status,
+    start_from,
+)
+
+
+def gap(gap_id, start, end, reason="skipped_backlog"):
+    return Gap(gap_id, start, end, reason, "2026-11-12T00:00:00Z", None)
+
+
+def plan(start, gaps=(), cursor=1000, head=1200):
+    return plan_start(start, cursor, head, list(gaps))
+
+
+@pytest.mark.parametrize(
+    ("start", "kind", "first", "last", "size"),
+    [
+        (900, "backfill", 900, 1000, 101),
+        (1000, "backfill", 1000, 1000, 1),
+        (1, "backfill", 1, 1000, 1000),
+        (1001, "nothing", 1001, 1000, 0),
+        (1002, "skip", 1001, 1001, 1),
+        (1100, "skip", 1001, 1099, 99),
+        (1200, "skip", 1001, 1199, 199),
+    ],
+)
+def test_a_start_id_becomes_a_backfill_a_skip_or_nothing(start, kind, first, last, size):
+    found = plan(start)
+
+    assert (found.kind, found.start_id, found.end_id, found.size) == (kind, first, last, size)
+    assert found.merged_gap_ids == ()
+
+
+def test_an_id_newer_than_the_head_is_refused_naming_the_head():
+    with pytest.raises(StartError, match=r"1,200"):
+        plan(1201)
+
+
+@pytest.mark.parametrize("start", [0, -5])
+def test_an_id_below_one_is_refused(start):
+    with pytest.raises(StartError, match="Enter a lobby id or an osu! match link."):
+        plan(start)
+
+
+@pytest.mark.parametrize(("cursor", "head"), [(None, 1200), (1000, None), (None, None)])
+def test_before_the_scanner_has_started_there_is_no_plan(cursor, head):
+    with pytest.raises(StartError, match="has not started"):
+        plan_start(900, cursor, head, [])
+
+
+def test_a_backfill_replaces_the_skipped_ranges_it_overlaps():
+    found = plan(900, [gap(1, 950, 960), gap(2, 880, 920), gap(3, 500, 600), gap(4, 850, 899)])
+
+    assert (found.kind, found.start_id, found.end_id) == ("backfill", 880, 1000)
+    assert found.merged_gap_ids == (1, 2)  # a range that ends before the start is not merged
+    assert found.size == 121
+
+
+def test_a_gap_that_straddles_the_start_extends_the_range_downwards_only():
+    found = plan(900, [gap(1, 800, 905)])
+
+    assert (found.start_id, found.end_id, found.merged_gap_ids) == (800, 1000, (1,))
+
+
+def test_a_skip_ignores_the_listed_gaps():
+    found = plan(1100, [gap(1, 100, 200)])
+
+    assert (found.kind, found.merged_gap_ids) == ("skip", ())
+
+
+async def test_applying_a_backfill_deletes_merged_gaps_and_requests_one_admin_range(db, skimmer):
+    stale = scan_repo.insert_gap(db, 950, 960, "skipped_backlog", "2026-11-12T00:00:00Z")
+    kept = scan_repo.insert_gap(db, 500, 600, "skipped_backlog", "2026-11-12T00:00:00Z")
+    jobs_repo.set_cursor(db, "skimmer", "1000")
+
+    new_id = start_from(db, skimmer, plan(900, scan_repo.list_gaps(db)), T0)
+
+    assert scan_repo.get_gap(db, stale) is None and scan_repo.get_gap(db, kept) is not None
+    created = scan_repo.get_gap(db, new_id)
+    assert (created.start_id, created.end_id, created.reason) == (900, 1000, "admin_skip")
+    assert created.backfilled_until == 899 and created.created_at == "2026-11-12T12:30:15Z"
+    assert saved_cursor(db) == 1000  # the live cursor does not move back
+
+
+async def test_applying_a_skip_records_a_range_and_moves_the_cursor_forward(db, osu, make, cup):
+    skimmer = make()
+    lobbies(osu, 1, 1200)
+    jobs_repo.set_cursor(db, "skimmer", "1000")
+    await skimmer.check_head(db)
+
+    assert start_from(db, skimmer, plan(1100), T0) is None
+
+    (created,) = scan_repo.list_gaps(db)
+    assert (created.start_id, created.end_id, created.reason) == (1001, 1099, "admin_skip")
+    assert created.backfilled_until is None  # listed, not requested
+    assert saved_cursor(db) == 1099
+    assert skimmer._dispenser.take(T0) == 1100
+
+
+async def test_a_skip_forgets_open_lobbies_it_skipped(db, osu, make, cup):
+    skimmer = make()
+    lobbies(osu, 1, 1200, end_time=None)
+    jobs_repo.set_cursor(db, "skimmer", "1000")
+    await skimmer.check_head(db)
+    assert 1055 in skimmer._known_open
+
+    start_from(db, skimmer, plan(1100), T0)
+
+    assert 1055 not in skimmer._known_open and 1150 in skimmer._known_open
+
+
+async def test_applying_nothing_changes_nothing(db, skimmer):
+    assert start_from(db, skimmer, plan(1001), T0) is None
+    assert scan_repo.list_gaps(db) == []
+
+
+async def test_skipping_before_the_first_head_check_is_refused_and_leaves_no_range(db, skimmer):
+    with pytest.raises(StartError, match="has not started"):
+        start_from(db, skimmer, StartPlan("skip", 1001, 1099, 99), T0)
+
+    assert scan_repo.list_gaps(db) == []  # rolled back with the failed skip
+
+
+async def test_a_skip_is_not_undone_by_the_next_head_check(db, osu, make, cup):
+    skimmer = make(scanner_max_backlog=500)
+    lobbies(osu, 1, 1200)
+    jobs_repo.set_cursor(db, "skimmer", "1000")
+    await skimmer.check_head(db)
+    start_from(db, skimmer, plan(1100), T0)
+
+    await skimmer.check_head(db)  # the head is 1200, 100 ahead: inside the allowed backlog
+
+    assert [g.reason for g in scan_repo.list_gaps(db)] == ["admin_skip"]
+    assert saved_cursor(db) == 1099
+
+
+async def test_the_backfill_worker_reads_an_admin_range_oldest_first(db, osu, make, cup):
+    skimmer = make()
+    lobbies(osu, 1, 30)
+    await skimmer.check_head(db)
+    new_id = start_from(db, skimmer, plan_start(20, 30, 30, []), T0)
+    osu.requests.clear()
+
+    while await skimmer.backfill_one(db):
+        pass
+
+    assert match_ids_fetched(osu) == list(range(20, 31))
+    assert scan_repo.get_gap(db, new_id).backfill_done
+
+
+# --- stopping a backfill ---
+
+
+def requested_gap(db, start, end, read_until):
+    gap_id = scan_repo.insert_gap(db, start, end, "admin_skip", "2026-11-12T00:00:00Z")
+    scan_repo.request_backfill(db, gap_id)
+    scan_repo.set_backfilled_until(db, gap_id, read_until)
+    return gap_id
+
+
+def test_stopping_keeps_what_was_read_and_leaves_the_rest_to_backfill_again(db):
+    gap_id = requested_gap(db, 100, 199, 149)
+
+    assert scan_repo.stop_backfill(db, gap_id) is True
+
+    stopped = scan_repo.get_gap(db, gap_id)
+    assert (stopped.start_id, stopped.end_id, stopped.backfilled_until) == (150, 199, None)
+    assert scan_repo.next_backfill(db) is None
+    assert scan_repo.request_backfill(db, gap_id) is True
+
+
+def test_stopping_before_anything_was_read_changes_only_the_request(db):
+    gap_id = requested_gap(db, 100, 199, 99)
+
+    assert scan_repo.stop_backfill(db, gap_id) is True
+
+    stopped = scan_repo.get_gap(db, gap_id)
+    assert (stopped.start_id, stopped.backfilled_until) == (100, None)
+
+
+def test_a_gap_that_was_never_requested_or_is_finished_cannot_be_stopped(db):
+    idle = scan_repo.insert_gap(db, 10, 20, "skipped_backlog", "2026-11-12T00:00:00Z")
+    done = requested_gap(db, 30, 40, 40)
+
+    assert scan_repo.stop_backfill(db, idle) is False
+    assert scan_repo.stop_backfill(db, done) is False
+    assert scan_repo.stop_backfill(db, 999) is False
+    assert scan_repo.get_gap(db, done).backfilled_until == 40
+
+
+def test_deleting_gaps_removes_only_the_given_ones(db):
+    first = scan_repo.insert_gap(db, 1, 2, "skipped_backlog", "2026-11-12T00:00:00Z")
+    second = scan_repo.insert_gap(db, 3, 4, "skipped_backlog", "2026-11-12T00:00:00Z")
+
+    scan_repo.delete_gaps(db, [first])
+    scan_repo.delete_gaps(db, [])
+
+    assert [g.id for g in scan_repo.list_gaps(db)] == [second]
+
+
+# --- how long a backfill takes ---
+
+
+def eta_status(db, settings, clock, requests, budget):
+    for ago in range(0, 60):
+        scan_repo.add_stats(
+            db,
+            (clock.current - timedelta(minutes=ago)).strftime("%Y-%m-%dT%H:%M"),
+            ids_scanned=1,
+            requests=requests,
+        )
+    return scanner_status(
+        db, dataclasses.replace(settings, scanner_budget_per_min=budget), clock.current
+    )
+
+
+def test_the_eta_divides_the_size_by_the_spare_budget(db, settings, clock):
+    status = eta_status(db, settings, clock, requests=20, budget=60)
+
+    assert backfill_eta_minutes(4000, status) == pytest.approx(4000 / 40)
+
+
+def test_the_eta_is_unknown_when_no_budget_is_spare(db, settings, clock):
+    status = eta_status(db, settings, clock, requests=30, budget=30)
+
+    assert backfill_eta_minutes(4000, status) is None
+
+
+# --- review fixes: a stop is not undone, a skip that did not move, one number format ---
+
+
+def test_progress_is_only_recorded_while_the_backfill_is_requested_and_only_forwards(db):
+    idle = scan_repo.insert_gap(db, 10, 20, "skipped_backlog", "2026-11-12T00:00:00Z")
+    running = requested_gap(db, 100, 199, 99)
+
+    scan_repo.set_backfilled_until(db, idle, 12)
+    scan_repo.set_backfilled_until(db, running, 120)
+    scan_repo.set_backfilled_until(db, running, 110)  # a late, older write
+
+    assert scan_repo.get_gap(db, idle).backfilled_until is None
+    assert scan_repo.get_gap(db, running).backfilled_until == 120
+
+
+async def test_a_stop_that_lands_while_an_id_is_being_read_is_not_undone(db, osu, make, cup):
+    skimmer = make()
+    lobbies(osu, 1, 30)
+    await skimmer.check_head(db)
+    gap_id = requested_gap(db, 20, 30, 24)
+
+    async def read_then_get_stopped(conn, match_id, live=True):
+        assert scan_repo.stop_backfill(conn, gap_id)  # the admin clicks Stop during the fetch
+        return True
+
+    skimmer._scan_guarded = read_then_get_stopped
+
+    assert await skimmer.backfill_one(db) is True
+
+    stopped = scan_repo.get_gap(db, gap_id)
+    assert (stopped.start_id, stopped.backfilled_until) == (25, None)
+    assert scan_repo.next_backfill(db) is None  # it does not resume by itself
+
+
+def test_skip_forward_says_whether_the_cursor_moved(db, skimmer):
+    skimmer._dispenser = IdDispenser(1100, 1200)
+
+    assert skimmer.skip_forward(db, 1100) is False
+    assert skimmer.skip_forward(db, 1050) is False
+    assert skimmer.skip_forward(db, 1150) is True
+    assert skimmer._dispenser.cursor == 1150
+    assert saved_cursor(db) == 1150
+
+
+async def test_a_skip_to_where_the_live_cursor_already_is_stores_no_range(db, skimmer):
+    jobs_repo.set_cursor(db, "skimmer", "1000")  # the saved cursor lags the live one
+    skimmer._dispenser = IdDispenser(1100, 1200)
+
+    with pytest.raises(StartError, match="already continues past lobby id 1,100"):
+        start_from(db, skimmer, plan(1100), T0)
+
+    assert scan_repo.list_gaps(db) == []
+    assert saved_cursor(db) == 1000
+
+
+def test_the_head_message_uses_one_number_format():
+    with pytest.raises(StartError) as raised:
+        plan(12_001, cursor=1000, head=12_000)
+
+    assert str(raised.value).count("12,000") == 2 and "12000" not in str(raised.value)
+
+
+# --- start from an id: ordering and finished ranges ---
+
+
+async def test_a_failed_insert_leaves_memory_and_database_in_step(db, skimmer, monkeypatch):
+    jobs_repo.set_cursor(db, "skimmer", "1000")
+    skimmer._dispenser = IdDispenser(1000, 1200)
+
+    def broken_insert(*args, **kwargs):
+        raise sqlite3.OperationalError("disk full")
+
+    monkeypatch.setattr(scan_repo, "insert_gap", broken_insert)
+
+    with pytest.raises(sqlite3.OperationalError):
+        start_from(db, skimmer, plan(1100), T0)
+
+    assert skimmer.live_cursor == 1000  # the scanner did not skip
+    assert saved_cursor(db) == 1000
+    assert not db.in_transaction
+
+
+def test_the_live_cursor_is_none_until_the_first_head_check(skimmer):
+    assert skimmer.live_cursor is None
+    skimmer._dispenser = IdDispenser(1100, 1200)
+    assert skimmer.live_cursor == 1100
+
+
+def test_a_finished_backfill_is_left_as_done_and_not_folded_into_a_new_range():
+    done = Gap(1, 950, 960, "admin_skip", "2026-11-12T00:00:00Z", 960)
+    running = Gap(2, 940, 970, "admin_skip", "2026-11-12T00:00:00Z", 955)
+    unread = gap(3, 920, 930)
+
+    found = plan(900, [done, running, unread])
+
+    assert found.merged_gap_ids == (2, 3)
+    assert (found.start_id, found.end_id) == (900, 1000)

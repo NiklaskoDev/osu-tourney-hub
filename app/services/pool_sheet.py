@@ -7,6 +7,7 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime
 
+from app.clock import Clock, to_utc_iso
 from app.domain.models import Member, Note, PoolMap, Score, Stage, Tournament
 from app.domain.parsing import parse_uint
 from app.repos import members as members_repo
@@ -119,14 +120,46 @@ def visible_tournament_names(
     return {entry.tournament.id: entry.tournament.name for entry in entries}
 
 
-def pick_stage(stages: list[Stage], raw: str | None) -> Stage | None:
-    """The stage named by `?stage=` if it is one of these; else the first stage with a published
-    pool, else the first stage."""
+def current_stage(stages: list[Stage], now: datetime) -> Stage | None:
+    """The round that is on now. `stages` are in sort order.
+
+    No stage has a date: the old rule (first released pool, else first stage). Otherwise a running
+    stage (the latest start wins), else the next one to start, else the last stage."""
+    if not any(stage.start_at or stage.end_at for stage in stages):
+        return pick_stage(stages, None)
+    stamp = to_utc_iso(now)
+    running = [
+        stage
+        for stage in stages
+        if (stage.start_at or stage.end_at)
+        and (stage.start_at is None or stage.start_at <= stamp)
+        and stage.end_at is not None
+        and stamp < stage.end_at
+    ]
+    if running:
+        # A missing start counts as the earliest.
+        return max(running, key=lambda stage: stage.start_at or "")
+    upcoming = [stage for stage in stages if stage.start_at is not None and stage.start_at > stamp]
+    if upcoming:
+        return min(upcoming, key=lambda stage: stage.start_at or "")
+    return stages[-1]
+
+
+def pick_stage(stages: list[Stage], raw: str | None, now: datetime | None = None) -> Stage | None:
+    """The stage named by `?stage=` if it is one of these. Else, when `now` is given (an active
+    tournament), the current round; else the first stage with a published pool, else the first."""
     wanted = parse_uint(raw or "")
     for stage in stages:
         if stage.id == wanted:
             return stage
+    if now is not None:
+        return current_stage(stages, now)
     return next((stage for stage in stages if stage.pool_released), stages[0] if stages else None)
+
+
+def stage_clock_now(tournament: Tournament, clock: Clock) -> datetime | None:
+    """`now` for `pick_stage`: only an active tournament opens on the current round."""
+    return clock.now() if tournament.status == "active" else None
 
 
 def load_stage(conn: sqlite3.Connection, tournament: Tournament, stage: Stage) -> StageData:

@@ -1,0 +1,140 @@
+{% extends "layout/tournament.html" %}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/csrf.html" import csrf_field %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/map_name.html" import map_name %}
+{% from "components/table.html" import table %}
+{% set match = stats.match %}
+{% set team1_name = stats.team1.name if stats.team1 else "Team not decided" %}
+{% set team2_name = stats.team2.name if stats.team2 else "Team not decided" %}
+{% block title %}Stats {{ team1_name }} vs {{ team2_name }} - {{ tournament.name }} - {% endblock %}
+
+{% macro team_name(side) -%}
+{%- if side == 1 %}{{ team1_name }}{% elif side == 2 %}{{ team2_name }}{% else %}<span class="muted">-</span>{% endif -%}
+{%- endmacro %}
+
+{% block tournament_content %}
+<div class="page__header">
+  <h1>{{ team1_name }} vs {{ team2_name }}</h1>
+  <p class="muted">{% if stats.stage %}{{ stats.stage.name }}{% endif %}{% if match.label %}{% if stats.stage %}, {% endif %}{{ match.label }}{% endif %}{% if match.status == "done" and match.score1 is not none %}, final score <span class="num">{{ match.score1 }} - {{ match.score2 }}</span>{% endif %}</p>
+</div>
+
+<div class="toolbar">
+  {{ button("Back to results", variant="secondary", href="/t/" ~ tournament.id ~ "/results") }}
+  {{ button("Review predictions", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ match.id ~ "/review") }}
+  {% if can_refresh and stats.has_lobby %}
+  <form method="post" action="/t/{{ tournament.id }}/matches/{{ match.id }}/review/refresh">
+    {{ csrf_field(csrf_token) }}
+    <input type="hidden" name="return_to" value="stats">
+    {{ button("Read lobby again", variant="secondary", type="submit", icon_name="refresh-cw", title="Read the match's multiplayer lobby again") }}
+  </form>
+  {% endif %}
+</div>
+
+{% if not stats.has_lobby %}
+{{ empty_state("This match has no multiplayer link, so there are no stats.") }}
+{% elif not stats.lobby_read %}
+{{ empty_state("The lobby has not been read yet. It is read automatically after the match; a captain can read it now.") }}
+{% else %}
+
+<section class="stack" aria-labelledby="maps-heading">
+  <h2 id="maps-heading">Maps</h2>
+  {% call table("Maps played in order, with the winner and the team totals") %}
+  <thead>
+    <tr>
+      <th scope="col">Step</th>
+      <th scope="col">Map</th>
+      <th scope="col">Winner</th>
+      <th scope="col" class="is-numeric">{{ team1_name }}</th>
+      <th scope="col" class="is-numeric">{{ team2_name }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for map in stats.maps %}
+    <tr>
+      <th scope="row">{{ "Tiebreaker" if map.kind == "tiebreaker" else "Pick" }}</th>
+      <td>{% if map.pool_map %}{{ badge(map.pool_map.slot) }} {{ map_name(map.pool_map) }}{% else %}<span class="muted">Map outside the pool</span>{% endif %}</td>
+      <td>{% if map.winner_name %}{{ map.winner_name }}{% else %}<span class="muted">No winner</span>{% endif %}</td>
+      <td class="is-numeric{% if map.winner_side == 1 %} is-winner{% endif %}">{{ map.team1_total|fmt_score }}</td>
+      <td class="is-numeric{% if map.winner_side == 2 %} is-winner{% endif %}">{{ map.team2_total|fmt_score }}</td>
+    </tr>
+    <tr>
+      <td colspan="5">
+        <details class="map-detail map-detail--stats">
+          <summary>Player scores <span class="muted">{{ map.scores|length }}</span></summary>
+          <div class="map-detail__body">
+            {% if map.scores %}
+            <table class="table table--nested">
+              <caption class="visually-hidden">Player scores on {{ map.pool_map.slot if map.pool_map else "this map" }}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Player</th>
+                  <th scope="col">Team</th>
+                  <th scope="col" class="is-numeric">Score</th>
+                  <th scope="col" class="is-numeric">Acc</th>
+                  <th scope="col">Mods</th>
+                  <th scope="col" class="is-numeric">Misses</th>
+                  <th scope="col" class="is-numeric">Combo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for line in map.scores %}
+                <tr{% if line.side and line.side == map.winner_side %} class="is-winner"{% endif %}>
+                  <th scope="row">{{ line.name }}</th>
+                  <td>{{ team_name(line.side) }}</td>
+                  <td class="is-numeric">{{ line.score|fmt_score }}</td>
+                  <td class="is-numeric">{{ line.accuracy|fmt_acc }}</td>
+                  <td>{{ line.mods|mods }}</td>
+                  <td class="is-numeric">{{ line.misses if line.misses is not none else "-" }}</td>
+                  <td class="is-numeric">{{ line.max_combo if line.max_combo is not none else "-" }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <p class="muted">No player scores for this map</p>
+            {% endif %}
+          </div>
+        </details>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+</section>
+
+<section class="stack" aria-labelledby="players-heading">
+  <h2 id="players-heading">Players</h2>
+  {% if stats.players %}
+  {% call table("Each rostered player's average over the maps they played") %}
+  <thead>
+    <tr>
+      <th scope="col">Player</th>
+      <th scope="col">Team</th>
+      <th scope="col" class="is-numeric">Maps</th>
+      <th scope="col" class="is-numeric">Avg score</th>
+      <th scope="col" class="is-numeric">Avg acc</th>
+      <th scope="col" class="is-numeric">Maps won</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in stats.players %}
+    <tr>
+      <th scope="row">{{ line.name }}</th>
+      <td>{{ team_name(line.side) }}</td>
+      <td class="is-numeric">{{ line.maps_played }}</td>
+      <td class="is-numeric">{{ line.mean_score|fmt_score }}</td>
+      <td class="is-numeric">{{ line.mean_accuracy|fmt_acc }}</td>
+      <td class="is-numeric">{{ line.maps_won }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  {% else %}
+  <p class="muted">No player scores were stored for this match. A captain can read the lobby again.</p>
+  {% endif %}
+  <p class="muted">Only players on either team's roster are listed; stand-ins still count in the map totals.</p>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,5 +1,6 @@
 """The availability page: who sees what, saving a range, UTC versus local, the match overlay."""
 
+import dataclasses
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -57,6 +58,12 @@ def cup(db):
 
 
 def page(client, cup, **params):
+    """The edit grid (`?edit=1`), which holds the slot rows and the buttons."""
+    return client.get(f"/t/{cup['id']}/availability", params={"edit": "1", **params})
+
+
+def view_page(client, cup, **params):
+    """The default timeline view."""
     return client.get(f"/t/{cup['id']}/availability", params=params)
 
 
@@ -550,3 +557,224 @@ def test_removing_a_member_removes_their_answers_there(client, login, csrf, cup,
     assert response.status_code == 303
     assert stored(db, cup["id"], PLAYER) == {}
     assert stored(db, cup["id"], OTHER_PLAYER) == {"2026-11-16T18:00:00Z": "yes"}
+
+
+# --- the timeline view (the default) -------------------------------------------------------------
+
+
+def timeline_rows(html: str) -> list[str]:
+    return re.findall(r'<tr class="timeline__row[^"]*">.*?</tr>', html, re.DOTALL)
+
+
+def test_the_default_view_is_a_timeline_per_day_without_slot_buttons(client, login, cup):
+    login(PLAYER)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    assert html.count('<table class="timeline">') == 7
+    assert 'role="region" aria-label="Availability on Monday 16 Nov"' in html
+    assert "data-slot=" not in html
+    assert 'class="avail"' not in html
+    assert "<h1>Availability</h1>" in html
+
+
+def test_every_timeline_row_adds_up_to_the_slot_count(client, login, cup, db):
+    add_availability(db, cup["id"], PLAYER, slots("2026-11-16T18:00:00Z", 6))
+    add_availability(db, cup["id"], OTHER_PLAYER, slots("2026-11-17T12:00:00Z", 3), "maybe")
+    login(PLAYER)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    rows = timeline_rows(html)
+    assert len(rows) == 7 * 4  # seven days, four players (the guest has no row)
+    for row in rows:
+        assert sum(int(span) for span in re.findall(r'<td colspan="(\d+)"', row)) == 48
+
+
+def test_a_player_with_a_saved_slot_gets_the_check_and_one_without_is_dashed(
+    client, login, cup, db
+):
+    add_availability(db, cup["id"], PLAYER, ["2026-11-16T18:00:00Z"])
+    login(CAPTAIN)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    monday = html.split('aria-label="Availability on Tuesday 17 Nov"')[0]
+    by_name = {
+        name: row
+        for row in timeline_rows(monday)
+        for name in ("player2001", "player2002", "player2003")
+        if f'title="{name}"' in row
+    }
+    assert "filled in" in by_name["player2002"] and "is-unfilled" not in by_name["player2002"]
+    assert "filled in" not in by_name["player2003"] and "is-unfilled" in by_name["player2003"]
+
+
+def test_the_check_only_counts_the_shown_week(client, login, cup, db):
+    add_availability(db, cup["id"], PLAYER, ["2026-11-23T18:00:00Z"])  # the week after
+    login(CAPTAIN)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    assert ">filled in<" not in html
+
+
+def test_the_bars_say_their_state_and_time_and_the_row_header_says_it_in_words(
+    client, login, cup, db
+):
+    add_availability(db, cup["id"], PLAYER, slots("2026-11-16T18:00:00Z", 4))
+    login(CAPTAIN)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    assert 'data-state="yes" title="Available 18:00-20:00"' in html
+    assert "Yes 18:00-20:00, No otherwise" in html
+
+
+def test_a_match_is_a_labelled_band_on_its_day(client, login, cup, db):
+    add_match(db, cup["id"], cup["ours"], cup["rival"], "2026-11-17T19:30:00Z")
+    login(PLAYER)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    assert html.count('<span class="timeline__band"') == 1  # on the match's day only
+    assert ">vs Rival Crew<" in html
+    assert html.count('class="timeline__matches"') == 1
+
+
+def test_update_my_availability_opens_the_edit_mode_for_a_player(client, login, cup):
+    login(PLAYER)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    assert "Update my availability" in html
+    assert f'href="/t/{cup["id"]}/availability?week={WEEK}&amp;edit=1"' in html
+
+
+@pytest.mark.parametrize("who", [GUEST, STRANGER])
+def test_nobody_without_a_player_row_gets_the_update_button(client, login, cup, db, who):
+    if who == STRANGER:
+        add_member(db, cup["id"], who, "guest")
+    login(who)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    assert "Update my availability" not in html
+    assert "You are not on the roster as a player" in html
+
+
+def test_an_archived_tournament_has_no_update_button(client, login, cup, db):
+    db.execute("UPDATE tournaments SET status = 'archived' WHERE id = ?", (cup["id"],))
+    login(PLAYER)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    assert "Update my availability" not in html
+    assert html.count('<table class="timeline">') == 7
+
+
+def test_the_zone_switch_is_on_for_local_and_off_for_utc(client, login, cup):
+    login(CAPTAIN)
+
+    utc_html = view_page(client, cup, week=WEEK).text
+    local_html = view_page(client, cup, week=WEEK, tz="local").text
+
+    assert re.search(
+        r'<input class="switch__input"[^>]*name="tz"[^>]*value="local" checked', local_html
+    )
+    assert not re.search(r'<input class="switch__input"[^>]* checked', utc_html)
+    assert "data-autosubmit" in utc_html and "<noscript>" in utc_html
+
+
+def test_the_share_link_keeps_the_view_but_not_the_member_or_the_edit_mode(client, login, cup):
+    login(CAPTAIN)
+
+    html = view_page(client, cup, week=WEEK, member=PLAYER, edit="0", tz="utc").text
+
+    match = re.search(r'data-copy="([^"]+)"', html)
+    assert match
+    link = match.group(1).replace("&amp;", "&")
+    assert link.startswith("https://tourney.example.com/t/")
+    assert f"week={WEEK}" in link and "member" not in link and "edit" not in link
+    assert "Link copied" in html
+
+
+def test_the_timezone_script_still_runs_in_the_timeline_view(client, login, cup, db):
+    db.execute("UPDATE users SET timezone = NULL WHERE osu_id = ?", (CAPTAIN,))
+    login(CAPTAIN)
+
+    html = view_page(client, cup, week=WEEK, tz="local").text
+
+    assert "/static/js/availability.js" in html
+    assert "data-detect-zone" in html
+
+
+# --- the edit mode --------------------------------------------------------------------------------
+
+
+def test_edit_mode_has_the_grid_with_buttons_only_in_the_own_column_and_a_done_link(
+    client, login, cup
+):
+    login(PLAYER)
+
+    html = client.get(f"/t/{cup['id']}/availability", params={"edit": "1", "week": WEEK}).text
+
+    assert "<h1>Update availability</h1>" in html
+    assert 'class="timeline"' not in html
+    assert html.count('data-slot="2026-11-16T18:00:00Z"') == 1
+    assert f'href="/t/{cup["id"]}/availability?week={WEEK}"' in html  # Done
+
+
+def test_edit_mode_lets_a_captain_choose_whose_column_to_edit(client, login, cup):
+    login(CAPTAIN)
+
+    html = client.get(
+        f"/t/{cup['id']}/availability", params={"edit": "1", "week": WEEK, "member": PLAYER}
+    ).text
+
+    assert 'data-member="2002"' in html
+    assert re.search(r'<form class="toolbar" method="get"[^>]*data-autosubmit novalidate>', html)
+    assert 'name="edit" value="1"' in html
+
+
+def test_the_share_link_falls_back_to_the_address_of_the_request_without_a_public_url(
+    client, app, login, cup
+):
+    app.state.settings = dataclasses.replace(app.state.settings, public_url="")
+    login(CAPTAIN)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    link = re.search(r'data-copy="([^"]+)"', html).group(1)
+    assert link.startswith("https://tourney.example.com/t/")
+    assert link.endswith(f"/availability?week={WEEK}")
+
+
+def test_a_one_slot_free_run_shows_the_count_against_the_lineup_size(client, login, cup, db):
+    add_availability(db, cup["id"], PLAYER, ["2026-11-16T18:00:00Z"])
+    login(CAPTAIN)
+
+    html = view_page(client, cup, week=WEEK).text
+
+    assert re.search(r'<td colspan="1" class="">1/2', html)
+
+
+def test_the_share_link_keeps_the_time_zone_of_the_view_and_says_so(client, login, cup):
+    login(CAPTAIN)  # saved timezone: Europe/Berlin
+
+    html = view_page(client, cup, week=WEEK, tz="local").text
+
+    link = re.search(r'data-copy="([^"]+)"', html).group(1).replace("&amp;", "&")
+    assert "tz=local" in link and "zone=Europe%2FBerlin" in link and f"week={WEEK}" in link
+    assert (
+        "The share link opens in the time zone you are viewing; whoever opens it can switch."
+        in html
+    )
+
+
+def test_the_share_link_of_a_utc_view_has_no_zone(client, login, cup):
+    login(CAPTAIN)
+
+    link = re.search(r'data-copy="([^"]+)"', view_page(client, cup, week=WEEK).text).group(1)
+
+    assert "zone" not in link and "tz=" not in link

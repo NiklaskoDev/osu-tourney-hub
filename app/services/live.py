@@ -235,7 +235,7 @@ class LiveFollower:
     ) -> LiveState:
         ordered = [lobby_events[key] for key in sorted(lobby_events)]
         with closing(open_db(self._db_path)) as conn:
-            history.store_lobby_events(conn, match, ordered)
+            history.store_lobby_events(conn, match, ordered, self._clock.now())
             return build_state(conn, tournament, match, status, notice, _game_in_progress(ordered))
 
     def _publish(self, match_id: int, status: str, notice: str | None) -> None:

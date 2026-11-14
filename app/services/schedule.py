@@ -152,7 +152,11 @@ def current_lineup_size(
 def roster_columns(members: list[Member]) -> list[Column]:
     """Everyone on the roster but guests, who have no availability row."""
     return [
-        Column(member.osu_id, member.username or f"osu! user {member.osu_id}")
+        Column(
+            member.osu_id,
+            member.username or f"osu! user {member.osu_id}",
+            member.avatar_url,
+        )
         for member in members
         if member.role != "guest"
     ]
@@ -271,30 +275,67 @@ def lineup_filter(
     return LineupFilter(choices, selected, True, free, len(maybes))
 
 
-# --- calendar feed -----------------------------------------------------------------------------
+# --- calendar feed and homepage ----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class UpcomingMatch:
+    tournament: Tournament
+    view: MatchView
+
+
+def _calendar_views(
+    conn: sqlite3.Connection, matches: list[Match]
+) -> list[tuple[Tournament, MatchView]]:
+    """Each timed match with its tournament and view. Tournament, teams and stages are loaded
+    once per tournament."""
+    tournaments: dict[int, Tournament | None] = {}
+    teams: dict[int, dict[int, Team]] = {}
+    stages: dict[int, dict[int, Stage]] = {}
+    pairs = []
+    for match in matches:
+        tid = match.tournament_id
+        if tid not in tournaments:
+            tournaments[tid] = tournaments_repo.get(conn, tid)
+            teams[tid] = teams_by_id(conn, tid)
+            stages[tid] = {s.id: s for s in stages_repo.list_for_tournament(conn, tid)}
+        tournament = tournaments[tid]
+        if tournament is None or match.scheduled_at is None:
+            continue
+        pairs.append((tournament, _view(match, teams[tid], stages[tid], tournament.our_team_id)))
+    return pairs
 
 
 def feed_events(conn: sqlite3.Connection, osu_id: int) -> list[CalendarEvent]:
     """Our team's matches with a time in every active tournament the person belongs to."""
     events = []
-    tournaments: dict[int, Tournament | None] = {}
-    teams: dict[int, dict[int, Team]] = {}
-    for match in matches_repo.list_for_calendar(conn, osu_id):
-        if match.tournament_id not in tournaments:
-            tournaments[match.tournament_id] = tournaments_repo.get(conn, match.tournament_id)
-            teams[match.tournament_id] = teams_by_id(conn, match.tournament_id)
-        tournament = tournaments[match.tournament_id]
-        if tournament is None or match.scheduled_at is None:
-            continue
-        view = _view(match, teams[match.tournament_id], {}, tournament.our_team_id)
+    for tournament, view in _calendar_views(conn, matches_repo.list_for_calendar(conn, osu_id)):
+        match = view.match
         prefix = tournament.acronym or tournament.name
         label = f"{match.label}: " if match.label else ""
         events.append(
             CalendarEvent(
                 match_id=match.id,
-                start=from_utc_iso(match.scheduled_at),
+                start=from_utc_iso(match.scheduled_at or ""),
                 summary=f"[{prefix}] {label}{view.title}",
                 modified=from_utc_iso(match.updated_at),
             )
         )
     return events
+
+
+def upcoming_for_user(
+    conn: sqlite3.Connection, osu_id: int, now: datetime, limit: int = 5
+) -> list[UpcomingMatch]:
+    """The next matches of our teams across the person's active tournaments, soonest first. A match
+    that began less than `MATCH_DURATION` ago still counts, so one being played shows."""
+    earliest = to_utc_iso(now - MATCH_DURATION)
+    matches = [
+        match
+        for match in matches_repo.list_for_calendar(conn, osu_id)
+        if match.status != "done" and (match.scheduled_at or "") >= earliest
+    ]
+    return [
+        UpcomingMatch(tournament, view)
+        for tournament, view in _calendar_views(conn, matches[:limit])
+    ]

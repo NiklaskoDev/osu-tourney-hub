@@ -22,7 +22,9 @@ async def pickems_page(
 ) -> HTMLResponse:
     tournament = access.tournament
     stages = stages_repo.list_for_tournament(db, tournament.id)
-    chosen = pool_sheet.pick_stage(stages, stage)
+    chosen = pool_sheet.pick_stage(
+        stages, stage, pool_sheet.stage_clock_now(tournament, request.app.state.clock)
+    )
     context = {
         "access": access,
         "tournament": tournament,

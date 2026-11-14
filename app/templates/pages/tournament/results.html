@@ -1,0 +1,65 @@
+{% extends "layout/tournament.html" %}
+{% from "components/empty_state.html" import empty_state %}
+{% from "components/table.html" import table %}
+{% from "partials/played_row.html" import played_row %}
+{% block title %}Results - {{ tournament.name }} - {% endblock %}
+
+{% block tournament_content %}
+<div class="page__header">
+  <h1>Results</h1>
+</div>
+
+<section class="stack" aria-labelledby="played-heading">
+  <h2 id="played-heading">Played matches</h2>
+  {% if results.matches %}
+  {% call table("Played matches") %}
+  <thead>
+    <tr>
+      <th scope="col">Match</th>
+      <th scope="col">Opponent</th>
+      <th scope="col">Stage</th>
+      <th scope="col">Played</th>
+      <th scope="col">Result</th>
+      <th scope="col"><span class="visually-hidden">Actions</span></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for view in results.matches %}
+    {{ played_row(view, tournament.id) }}
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  {% else %}
+  {{ empty_state("No match has been played yet.") }}
+  {% endif %}
+</section>
+
+{% if results.players %}
+<section class="stack" aria-labelledby="players-heading">
+  <h2 id="players-heading">Our players</h2>
+  {% call table("Our players' averages over every played match with a read lobby") %}
+  <thead>
+    <tr>
+      <th scope="col">Player</th>
+      <th scope="col" class="is-numeric">Maps</th>
+      <th scope="col" class="is-numeric">Avg score</th>
+      <th scope="col" class="is-numeric">Avg acc</th>
+      <th scope="col" class="is-numeric">Maps won</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for line in results.players %}
+    <tr>
+      <th scope="row">{{ line.name }}</th>
+      <td class="is-numeric">{{ line.maps_played }}</td>
+      <td class="is-numeric">{{ line.mean_score|fmt_score }}</td>
+      <td class="is-numeric">{{ line.mean_accuracy|fmt_acc }}</td>
+      <td class="is-numeric">{{ line.maps_won }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {% endcall %}
+  <p class="muted">Averages cover the matches whose lobby has been read. Only players on a roster are listed.</p>
+</section>
+{% endif %}
+{% endblock %}

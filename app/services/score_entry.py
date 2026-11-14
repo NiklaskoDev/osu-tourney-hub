@@ -12,7 +12,7 @@ from datetime import datetime
 from app.clock import to_utc_iso
 from app.db.connection import transaction
 from app.domain.models import PoolMap, Score, Tournament
-from app.domain.modes import canonical_mods
+from app.domain.modes import canonical_mods, split_mods
 from app.domain.parsing import parse_uint
 from app.repos import members as members_repo
 from app.repos import notes as notes_repo
@@ -52,6 +52,7 @@ class ScoreForm:
     max_combo: str = ""
     mods: list[str] = field(default_factory=list)
     link: str = ""
+    mods_text: str = ""  # the quick bar's typed mods ("HDHR"); used when no box is ticked
 
 
 def record_score(
@@ -70,10 +71,10 @@ def record_score(
         beatmap_id=pool_map.beatmap_id,
         osu_id=player,
         gamemode=tournament.gamemode,
-        mods=_mods(pool_map, form.mods, tournament.gamemode),
+        mods=_mods(pool_map, form.mods, form.mods_text, tournament.gamemode),
         score=parse_score(form.score),
         scoring=tournament.scoring,
-        accuracy=parse_accuracy(form.accuracy),
+        accuracy=parse_optional_accuracy(form.accuracy),
         max_combo=parse_optional_count(form.max_combo, "max_combo", "Combo"),
         misses=parse_optional_count(form.misses, "misses", "Misses"),
         source_url=_link(form.link),
@@ -178,6 +179,11 @@ def parse_accuracy(text: str) -> float:
     return value
 
 
+def parse_optional_accuracy(text: str) -> float | None:
+    """None for a blank field, otherwise the accuracy as `parse_accuracy` reads it."""
+    return parse_accuracy(text) if text.strip() else None
+
+
 def parse_optional_count(text: str, field_name: str, label: str) -> int | None:
     if not text.strip():
         return None
@@ -189,12 +195,14 @@ def parse_optional_count(text: str, field_name: str, label: str) -> int | None:
     return value
 
 
-def _mods(pool_map: PoolMap, chosen: list[str], gamemode: int) -> str:
-    """Freemod and tiebreaker maps take the mods that were ticked; every other map is played with
-    its required mods."""
+def _mods(pool_map: PoolMap, chosen: list[str], typed: str, gamemode: int) -> str:
+    """Freemod and tiebreaker maps take the mods that were ticked, or typed when none is ticked;
+    every other map is played with its required mods and ignores both."""
     if not (pool_map.is_freemod or pool_map.is_tiebreaker):
         return pool_map.required_mods
     try:
+        if not chosen and typed.strip():
+            chosen = split_mods(typed)
         return canonical_mods(chosen, gamemode)
     except ValueError as error:
         raise EntryError(str(error) + ".", 422, "mods") from error

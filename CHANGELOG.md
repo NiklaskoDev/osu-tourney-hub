@@ -4,6 +4,18 @@ Versions follow `{major}.{minor}.{hotfix}[-prN]` — see `docs/ai/versioning.md`
 Sections per version: Added, Changed, Fixed, Removed, Security.
 
 ## [Unreleased]
+### Added
+- The home page lists your next matches across all your active tournaments, with a countdown, the stage, the tournament and a link to the match.
+- Availability shows one timeline per day with a green, amber or red bar row per player, a check for players who filled in the week, the matches and how many players are free. A switch changes between UTC and your local time, "Share team availability" copies a link to the current week, and "Update my availability" opens the 30-minute grid for editing.
+- Pool, lineup, coverage, pickems, import and the lobbies filter open on the current round of an active tournament (from the stage dates wybin lists); a stage named in the address still wins, and tournaments without stage dates keep the old choice.
+- Quick score entry above the pool sheet: pick a map by its slot (NM1, HD2, ...), type the score and save. Accuracy is optional, and mods can be typed for freemod and tiebreaker maps (for example HDHR).
+- A Stats page per played match (winner and totals of each map, every rostered player's score, accuracy and mods, per-player averages) and a new "Results" item in the tournament menu with the played matches and your players' totals. Reading a lobby now keeps its players' scores; lobbies read earlier show them after "Read lobby again".
+- Scanner page: "Start from a lobby id" takes a lobby id or an osu! match link. An older id is read in the background with spare budget (a range of more than `SCANNER_MAX_BACKLOG` ids asks for confirmation and shows a rough estimate); a newer id skips ahead and lists the skipped ids so they can be backfilled. The skipped ranges table says why each was skipped, and a running backfill can be stopped; what was read stays.
+
+### Changed
+- New look: a quieter, more refined design in light and dark mode. Pages now use the full window width, the tournament menu is pinned to the left edge and shows the tournament name, tables no longer scroll inside small boxes, and filter rows line up and apply as soon as a choice changes.
+- A score may now have no accuracy. It shows as "-", ranks below any score with an accuracy when scores tie, and is left out of accuracy averages and accuracy targets. The score import still needs an accuracy column.
+- Migration 0008 rebuilds the `scores` table so accuracy can be empty. Back up `/data` before updating.
 
 ## [0.1.0] - 2026-11-13
 ### Added

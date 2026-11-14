@@ -1,7 +1,8 @@
 {#- Data table wrapper. The caller supplies <thead> and <tbody>. The scroll region is focusable
-    so keyboard users can scroll it. Numeric cells use class="is-numeric". -#}
-{% macro table(caption) -%}
-<div class="table-wrap" role="region" aria-label="{{ caption }}" tabindex="0">
+    so keyboard users can scroll it. Numeric cells use class="is-numeric". scroll=true is only for
+    wide sheets: one viewport-tall box that keeps its header and first column in view. -#}
+{% macro table(caption, scroll=false) -%}
+<div class="table-wrap{% if scroll %} table-wrap--scroll{% endif %}" role="region" aria-label="{{ caption }}" tabindex="0">
   <table class="table">
     <caption class="visually-hidden">{{ caption }}</caption>
     {{ caller() }}

@@ -39,7 +39,9 @@ def _page(
 ) -> HTMLResponse:
     tournament = access.tournament
     stages = stages_repo.list_for_tournament(db, tournament.id)
-    stage = pool_sheet.pick_stage(stages, stage_ref)
+    stage = pool_sheet.pick_stage(
+        stages, stage_ref, pool_sheet.stage_clock_now(tournament, request.app.state.clock)
+    )
     context: dict[str, Any] = {
         "access": access,
         "tournament": tournament,

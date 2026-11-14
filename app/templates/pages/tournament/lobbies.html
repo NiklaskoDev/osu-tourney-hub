@@ -11,7 +11,6 @@
 {% block tournament_content %}
 <div class="page__header">
   <h1>Lobbies</h1>
-  <p class="muted">{{ tournament.name }}</p>
 </div>
 
 {% if archived %}
@@ -20,10 +19,10 @@
 
 <p class="muted">Multiplayer lobbies in which a map of a current pool was played, whatever the lobby is called. Players are listed only when they are registered in this tournament.</p>
 
-<form class="row row--top" method="get" action="/t/{{ tournament.id }}/lobbies">
-  {{ field("stage", "Stage", options=stage_options, value=stage_value, required=true) }}
-  {{ field("player", "Player", options=player_options, value=player_value, required=true) }}
-  <div>{{ button("Filter lobbies", variant="secondary", type="submit") }}</div>
+<form class="toolbar" method="get" action="/t/{{ tournament.id }}/lobbies" data-autosubmit novalidate>
+  {{ field("stage", "Stage", options=stage_options, value=stage_value, hide_optional=true, inline=true) }}
+  {{ field("player", "Player", options=player_options, value=player_value, hide_optional=true, inline=true) }}
+  <noscript>{{ button("Apply filters", variant="secondary", type="submit") }}</noscript>
 </form>
 
 {% if rows %}
