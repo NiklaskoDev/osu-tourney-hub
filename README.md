@@ -155,6 +155,12 @@ figures, refreshed every 15 seconds, warns when the scanner falls behind, and li
 (after `SCANNER_MAX_BACKLOG` lobbies behind it jumps ahead) with a "Backfill" button; a backfill only
 runs while the scanner is nearly caught up. "Pause scanner" stops it until resumed.
 
+"Start from a lobby id" on the same page takes a lobby id or an osu! match link. An older id is read
+in the background with spare budget, oldest first, while the live scan carries on (a range larger
+than `SCANNER_MAX_BACKLOG` ids asks for confirmation and shows a rough estimate, and "Stop" keeps
+what was read). A newer id makes the scanner skip ahead; the skipped ids stay listed and can be
+backfilled.
+
 The Coverage page shows for each map of a stage who has a score (from any source), marks the players
 of the likely lineup (the current suggestion), flags maps where nobody in it, or fewer than the lineup
 size, has a score, and shows captains' practice targets (a score and/or accuracy for the team or one

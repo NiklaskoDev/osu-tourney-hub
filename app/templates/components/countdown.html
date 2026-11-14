@@ -1,6 +1,8 @@
 {#- iso is a UTC timestamp. app.js renders the countdown and the viewer's local time. -#}
-{% macro countdown(iso) -%}
-<time class="countdown" data-countdown datetime="{{ iso }}">{{ iso }}</time>
+{#- prefix is the wording that goes before the running timer ("in "); once the instant has passed
+    the text reads "Started" alone, so a past match never reads "in Started". -#}
+{% macro countdown(iso, prefix="") -%}
+<time class="countdown" data-countdown{% if prefix %} data-countdown-prefix="{{ prefix }}"{% endif %} datetime="{{ iso }}">{{ iso }}</time>
 {%- endmacro %}
 
 {% macro local_time(iso) -%}

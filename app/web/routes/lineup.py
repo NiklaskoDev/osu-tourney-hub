@@ -42,7 +42,9 @@ def _page(
 ) -> HTMLResponse:
     tournament = access.tournament
     stages = stages_repo.list_for_tournament(db, tournament.id)
-    stage = pool_sheet.pick_stage(stages, stage_ref)
+    stage = pool_sheet.pick_stage(
+        stages, stage_ref, pool_sheet.stage_clock_now(tournament, request.app.state.clock)
+    )
     suffix = ("&subs=1" if include_substitutes else "") + ("&avail=1" if only_available else "")
     context: dict[str, Any] = {
         "access": access,
@@ -126,7 +128,7 @@ def _stage_context(
         "slots": slots,
         "names": names,
         "player_options": [
-            ("", "Nobody"),
+            ("", "Choose player"),
             *((str(osu_id), name) for osu_id, name in names.items()),
         ],
         "form_values": values,

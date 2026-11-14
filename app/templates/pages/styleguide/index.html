@@ -13,6 +13,9 @@
 {% from "components/pagination.html" import pagination %}
 {% from "components/copy_button.html" import copy_button %}
 {% from "components/availability_cell.html" import availability_cell, availability_static %}
+{% from "components/switch.html" import switch %}
+{% from "partials/availability_timeline.html" import day_timeline %}
+{% from "partials/upcoming.html" import upcoming_list %}
 {% block title %}Styleguide - {% endblock %}
 
 {% block content %}
@@ -27,7 +30,7 @@
     <h2 id="g-colour">Colour</h2>
     <p class="muted">Neutral surfaces and one accent. Dark theme follows the system setting.</p>
     <div class="swatches">
-      {% for name in ["bg", "surface", "surface-2", "border", "text", "text-muted", "accent", "success", "warning", "danger"] %}
+      {% for name in ["bg", "surface", "surface-2", "surface-3", "border", "border-strong", "text", "text-muted", "accent", "accent-soft", "success", "warning", "danger", "avail-yes", "avail-maybe", "avail-no"] %}
       <div class="swatch">
         <div class="swatch__chip swatch__chip--{{ name }}"></div>
         <code>--{{ name }}</code>
@@ -195,6 +198,47 @@
       {{ availability_static("maybe") }}
     </div>
     <p>Next match in {{ countdown("2030-01-01T20:00:00Z") }} · <span class="muted">local time:</span> {{ local_time("2030-01-01T20:00:00Z") }}</p>
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-toolbar">
+    <h2 id="g-toolbar">Toolbar and switch</h2>
+    <p class="muted">Filters and actions in one aligned row. Real filter forms are GET forms with data-autosubmit and apply as soon as a control changes; this sample does not navigate.</p>
+    <form class="toolbar" aria-label="Sample toolbar">
+      {{ field("sg-tb-stage", "Stage", options=[("", "All stages"), ("1", "Qualifiers"), ("2", "Round of 16")], value="2", required=true, inline=true) }}
+      {{ field("sg-tb-player", "Player", options=[("", "Everyone"), ("1", "Player A")], required=true, inline=true) }}
+      {{ button("Export CSV", variant="text", icon_name="download") }}
+      <div class="toolbar__end">{{ button("Previous week", variant="secondary") }}{{ button("Next week", variant="secondary") }}</div>
+    </form>
+    <p class="state-label">Switch: off, on, disabled (Tab to a switch to see its focus ring)</p>
+    <div class="row">
+      {{ switch("sg-sw-off", "UTC", "Local", id="sg-sw-off") }}
+      {{ switch("sg-sw-on", "UTC", "Local", checked=true, id="sg-sw-on") }}
+      {{ switch("sg-sw-disabled", "UTC", "Local", disabled=true, id="sg-sw-disabled") }}
+    </div>
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-timeline">
+    <h2 id="g-timeline">Availability timeline</h2>
+    <p class="muted">One day: Player A is available then maybe, Player D has not filled in. Sample names.</p>
+    {{ day_timeline(sample_day, 3, 1) }}
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-upcoming">
+    <h2 id="g-upcoming">Upcoming matches</h2>
+    <p class="muted">The first item is the next match. Teams are samples.</p>
+    {{ upcoming_list(sample_upcoming) }}
+  </section>
+
+  <section class="guide-section" aria-labelledby="g-quick">
+    <h2 id="g-quick">Quick score bar</h2>
+    <p class="muted">Disabled sample, as shown on an archived tournament.</p>
+    <form class="toolbar quick-score" aria-label="Sample quick score bar">
+      {{ field("sg-q-map", "Map", options=[("", "Choose map")], required=true, disabled=true, inline=true) }}
+      {{ field("sg-q-score", "Score", required=true, disabled=true, inline=true, placeholder="e.g. 845 120") }}
+      {{ field("sg-q-acc", "Acc %", disabled=true, inline=true, placeholder="e.g. 97.85") }}
+      {{ field("sg-q-mods", "Mods", disabled=true, inline=true, placeholder="FM/TB only, e.g. HDHR") }}
+      {{ button("Save score", variant="primary", type="submit", disabled=true) }}
+    </form>
   </section>
 
   <section class="guide-section" aria-labelledby="g-dialog">

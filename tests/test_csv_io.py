@@ -281,7 +281,6 @@ def test_missing_columns_are_named():
         "Choose the column with the map slot or the beatmap id.",
         "Choose the column with the player name or osu! id.",
         "Choose the column with the score.",
-        "Choose the column with the accuracy.",
     ]
 
 
@@ -848,3 +847,49 @@ def test_the_import_page_offers_both_sources(client, login, cup):
     assert 'enctype="multipart/form-data"' in page and 'type="file"' in page
     assert "Google Sheets link" in page and "docs.google.com" in page
     assert f'name="stage" value="{cup["finals"]}"' in page
+
+
+def test_the_export_leaves_the_accuracy_empty_for_a_score_without_one(client, login, db, cup):
+    add_score(db, 1001, PLAYER, 800_000, accuracy=None)
+    login(PLAYER)
+
+    text = client.get(f"/t/{cup['id']}/export/pool.csv").text
+
+    assert "NM1,1001,player2002,2002,800000,,," in text
+
+
+def test_a_file_the_export_wrote_with_a_blank_accuracy_can_be_imported_again(
+    client, login, csrf, db, cup
+):
+    add_score(db, 1001, PLAYER, 800_000, accuracy=None)
+    add_score(db, 1002, OTHER_PLAYER, 700_000, accuracy=96.5, mods="HD")
+    login(CAPTAIN)
+    exported = client.get(f"/t/{cup['id']}/export/pool.csv").text
+    db.execute("DELETE FROM scores")
+    assert "NM1,1001,player2002,2002,800000,,," in exported
+
+    import_all(client, csrf(), cup["id"], exported)
+
+    assert [(row[1], row[3], row[5]) for row in imported(db)] == [
+        (PLAYER, 800_000, None),
+        (OTHER_PLAYER, 700_000, 96.5),
+    ]
+
+
+def test_a_file_without_an_accuracy_column_imports_with_empty_accuracies(
+    client, login, csrf, db, cup
+):
+    login(CAPTAIN)
+
+    import_all(client, csrf(), cup["id"], "slot,player,score\nNM1,player2002,600000\n")
+
+    assert [(row[3], row[5]) for row in imported(db)] == [(600_000, None)]
+
+
+def test_an_accuracy_that_is_written_is_still_checked(client, login, csrf, db, cup):
+    login(CAPTAIN)
+
+    page = upload(client, csrf(), cup["id"], "slot,player,score,accuracy\nNM1,player2002,1,abc\n")
+
+    assert "Enter the accuracy as a number from 0 to 100" in page.text
+    assert imported(db) == []

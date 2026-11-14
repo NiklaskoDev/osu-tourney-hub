@@ -5,6 +5,7 @@
 {% from "components/csrf.html" import csrf_field %}
 {% from "components/empty_state.html" import empty_state %}
 {% from "components/table.html" import table %}
+{% from "partials/played_row.html" import played_row %}
 {% block title %}Schedule - {{ tournament.name }} - {% endblock %}
 
 {% macro pull_scores(view) -%}
@@ -20,7 +21,6 @@
 {% block tournament_content %}
 <div class="page__header">
   <h1>Schedule</h1>
-  <p class="muted">{{ tournament.name }}</p>
 </div>
 
 {% if not schedule.only_ours %}
@@ -46,7 +46,7 @@
       <th scope="row">{{ view.match.label or view.title }}{% if view.match.label %}<span class="cell-sub muted">{{ view.title }}</span>{% endif %}</th>
       <td>{{ view.opponent_name }}</td>
       <td>{{ view.stage_name or "-" }}</td>
-      <td>{% if view.match.scheduled_at %}{{ local_time(view.match.scheduled_at) }}<span class="cell-sub muted">in {{ countdown(view.match.scheduled_at) }}</span>{% else %}<span class="muted">Not scheduled yet</span>{% endif %}</td>
+      <td>{% if view.match.scheduled_at %}{{ local_time(view.match.scheduled_at) }}<span class="cell-sub muted">{{ countdown(view.match.scheduled_at, prefix="in ") }}</span>{% else %}<span class="muted">Not scheduled yet</span>{% endif %}</td>
       <td>
         <div class="row row--nowrap">
           {{ button("Compare", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ view.match.id, icon_name="chevron-right") }}
@@ -80,14 +80,7 @@
   </thead>
   <tbody>
     {% for view in schedule.past %}
-    <tr>
-      <th scope="row">{{ view.match.label or view.title }}{% if view.match.label %}<span class="cell-sub muted">{{ view.title }}</span>{% endif %}</th>
-      <td>{{ view.opponent_name }}</td>
-      <td>{{ view.stage_name or "-" }}</td>
-      <td>{% if view.match.scheduled_at %}{{ local_time(view.match.scheduled_at) }}{% else %}<span class="muted">-</span>{% endif %}</td>
-      <td>{% if view.result %}{% if view.outcome == "W" %}<span class="result--win">W</span>{% elif view.outcome == "L" %}<span class="result--loss">L</span>{% endif %} <span class="num">{{ view.result }}</span>{% else %}<span class="muted">No result yet</span>{% endif %}</td>
-      <td>{{ button("Compare", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ view.match.id, icon_name="chevron-right") }}</td>
-    </tr>
+    {{ played_row(view, tournament.id, compare=true) }}
     {% endfor %}
   </tbody>
   {% endcall %}

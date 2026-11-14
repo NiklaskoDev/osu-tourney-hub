@@ -66,8 +66,14 @@ def _csv_response(text: str, filename: str) -> Response:
     )
 
 
-def _stage_for_export(db: sqlite3.Connection, tournament: Tournament, raw: str | None) -> Stage:
-    stage = pool_sheet.pick_stage(stages_repo.list_for_tournament(db, tournament.id), raw)
+def _stage_for_export(
+    db: sqlite3.Connection, tournament: Tournament, raw: str | None, clock: Clock
+) -> Stage:
+    stage = pool_sheet.pick_stage(
+        stages_repo.list_for_tournament(db, tournament.id),
+        raw,
+        pool_sheet.stage_clock_now(tournament, clock),
+    )
     if stage is None:
         raise UserFacingError(404, "This tournament has no stages to export.")
     return stage
@@ -78,8 +84,9 @@ async def export_pool(
     stage: str | None = None,
     access: TournamentAccess = Depends(member_access),
     db: sqlite3.Connection = Depends(get_db),
+    clock: Clock = Depends(get_clock),
 ) -> Response:
-    chosen = _stage_for_export(db, access.tournament, stage)
+    chosen = _stage_for_export(db, access.tournament, stage, clock)
     return _csv_response(
         csv_io.export_pool(db, access.tournament, chosen),
         _filename(access.tournament, chosen, "pool"),
@@ -91,8 +98,9 @@ async def export_lineup(
     stage: str | None = None,
     access: TournamentAccess = Depends(member_access),
     db: sqlite3.Connection = Depends(get_db),
+    clock: Clock = Depends(get_clock),
 ) -> Response:
-    chosen = _stage_for_export(db, access.tournament, stage)
+    chosen = _stage_for_export(db, access.tournament, stage, clock)
     return _csv_response(
         csv_io.export_lineup(db, access.tournament, chosen),
         _filename(access.tournament, chosen, "lineup"),
@@ -123,7 +131,9 @@ def _page(
 ) -> HTMLResponse:
     tournament = access.tournament
     stages = stages_repo.list_for_tournament(db, tournament.id)
-    stage = pool_sheet.pick_stage(stages, stage_ref)
+    stage = pool_sheet.pick_stage(
+        stages, stage_ref, pool_sheet.stage_clock_now(tournament, request.app.state.clock)
+    )
     context: dict[str, Any] = {
         "access": access,
         "tournament": tournament,
@@ -153,7 +163,11 @@ def _preview(
     except CsvImportError as refused:
         return _page(request, access, db, stage_ref, 422, upload_error=str(refused))
     stages = stages_repo.list_for_tournament(db, access.tournament.id)
-    stage = pool_sheet.pick_stage(stages, stage_ref)
+    stage = pool_sheet.pick_stage(
+        stages,
+        stage_ref,
+        pool_sheet.stage_clock_now(access.tournament, request.app.state.clock),
+    )
     if stage is None:
         return _page(request, access, db, None, 422, upload_error=NO_STAGE)
     if form_values is None:

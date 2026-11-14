@@ -1,0 +1,17 @@
+{#- One played match of ours: label, opponent, stage, time, result and the links. Shared by the
+    schedule and the results page; `compare` adds the link to the prediction comparison. -#}
+{% from "components/button.html" import button %}
+{% from "components/countdown.html" import local_time %}
+{% macro played_row(view, tournament_id, compare=false) -%}
+<tr>
+  <th scope="row">{{ view.match.label or view.title }}{% if view.match.label %}<span class="cell-sub muted">{{ view.title }}</span>{% endif %}</th>
+  <td>{{ view.opponent_name }}</td>
+  <td>{{ view.stage_name or "-" }}</td>
+  <td>{% if view.match.scheduled_at %}{{ local_time(view.match.scheduled_at) }}{% else %}<span class="muted">-</span>{% endif %}</td>
+  <td>{% if view.result %}{% if view.outcome == "W" %}<span class="result--win">W</span>{% elif view.outcome == "L" %}<span class="result--loss">L</span>{% endif %} <span class="num">{{ view.result }}</span>{% else %}<span class="muted">No result yet</span>{% endif %}</td>
+  <td class="nowrap">
+    {% if compare %}{{ button("Compare", variant="secondary", href="/t/" ~ tournament_id ~ "/matches/" ~ view.match.id, icon_name="chevron-right") }}{% endif %}
+    {{ button("Stats", variant="secondary" if compare else "text", href="/t/" ~ tournament_id ~ "/matches/" ~ view.match.id ~ "/stats", icon_name=none if compare else "chevron-right") }}
+  </td>
+</tr>
+{%- endmacro %}

@@ -94,7 +94,7 @@ def build_jobs(
 
     async def read_history() -> None:
         with closing(open_db(settings.db_path)) as conn:
-            await import_pending(conn, osu)
+            await import_pending(conn, osu, clock.now())
 
     async def start_live() -> None:
         await live.start_due()

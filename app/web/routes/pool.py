@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from app.clock import Clock
-from app.domain.models import Role
+from app.domain.models import PoolMap, Role
 from app.domain.modes import mode_name, selectable_mods
 from app.domain.parsing import parse_uint
 from app.repos import stages as stages_repo
@@ -37,9 +37,9 @@ def _actor(access: TournamentAccess) -> entry.Actor:
     return entry.Actor(access.user.osu_id, access.role >= Role.CAPTAIN)
 
 
-def _redirect(tid: int, stage_id: int | None) -> RedirectResponse:
+def _redirect(tid: int, stage_id: int | None, anchor: str = "") -> RedirectResponse:
     suffix = f"?stage={stage_id}" if stage_id is not None else ""
-    return RedirectResponse(f"/t/{tid}/pool{suffix}", status_code=303)
+    return RedirectResponse(f"/t/{tid}/pool{suffix}{anchor}", status_code=303)
 
 
 def _page(
@@ -53,7 +53,11 @@ def _page(
 ) -> HTMLResponse:
     tournament = access.tournament
     stages = stages_repo.list_for_tournament(db, tournament.id)
-    stage = pool_sheet.pick_stage(stages, None if stage_ref is None else str(stage_ref))
+    stage = pool_sheet.pick_stage(
+        stages,
+        None if stage_ref is None else str(stage_ref),
+        pool_sheet.stage_clock_now(tournament, clock),
+    )
     context: dict[str, Any] = {
         "access": access,
         "tournament": tournament,
@@ -89,13 +93,23 @@ def _page(
         context["player_options"] = [
             (str(p.osu_id), p.username or f"osu! user {p.osu_id}") for p in data.players
         ]
+        context["quick_map_options"] = [
+            ("", "Choose map"),
+            *((str(m.id), _quick_label(m)) for m in data.pool if m.beatmap_id is not None),
+        ]
     return render(request, "pages/tournament/pool.html", context, status_code=status_code)
 
 
-def _stage_of_map(db: sqlite3.Connection, raw_map_id: str) -> int | None:
+def _quick_label(pool_map: PoolMap) -> str:
+    """ "NM1 · Artist - Title": the slot first, so typing "HD2" in the select jumps to it."""
+    if not pool_map.title:
+        return pool_map.slot
+    return f"{pool_map.slot} · {pool_map.artist} - {pool_map.title}"
+
+
+def _map_of(db: sqlite3.Connection, raw_map_id: str) -> PoolMap | None:
     map_id = parse_uint(raw_map_id)
-    pool_map = stages_repo.get_map(db, map_id) if map_id is not None else None
-    return pool_map.stage_id if pool_map else None
+    return stages_repo.get_map(db, map_id) if map_id is not None else None
 
 
 def _refused(
@@ -143,8 +157,11 @@ async def add_score(
         max_combo=values.get("max_combo", ""),
         mods=mods,
         link=values.get("link", ""),
+        mods_text=values.get("mods_text", ""),
     )
-    stage_id = _stage_of_map(db, form.pool_map_id)
+    pool_map = _map_of(db, form.pool_map_id)
+    stage_id = pool_map.stage_id if pool_map else None
+    quick = values.get("entry_origin") == "quick"
     try:
         entry.record_score(db, access.tournament, _actor(access), form, clock.now())
     except EntryError as refused:
@@ -159,10 +176,10 @@ async def add_score(
             entry_values={**values, "mods": mods},
             entry_error=refused.message,
             entry_error_field=refused.field,
-            entry_kind="score",
+            entry_kind="quick" if quick else "score",
         )
-    flash(request, "success", "Score saved.")
-    return _redirect(access.tournament.id, stage_id)
+    flash(request, "success", f"Score saved on {pool_map.slot}." if pool_map else "Score saved.")
+    return _redirect(access.tournament.id, stage_id, "#quick-score" if quick else "")
 
 
 @router.post("/scores/{score_id}/delete")
@@ -193,7 +210,8 @@ async def add_note(
     db: sqlite3.Connection = Depends(get_db),
     clock: Clock = Depends(get_clock),
 ) -> Response:
-    stage_id = _stage_of_map(db, pool_map_id)
+    pool_map = _map_of(db, pool_map_id)
+    stage_id = pool_map.stage_id if pool_map else None
     try:
         entry.add_note(
             db, access.tournament, _actor(access), pool_map_id, visibility, body, clock.now()

@@ -39,7 +39,6 @@
 {% set ef = entry_error_field|default(none) %}
 <div class="page__header">
   <h1>Pool</h1>
-  <p class="muted">{{ tournament.name }}</p>
 </div>
 
 {% if stage_tabs %}{{ tabs("Stages", stage_tabs) }}{% endif %}
@@ -74,11 +73,32 @@
   {% if can_manage and not archived %}{{ button("Import scores", variant="secondary", icon_name="upload", href="/t/" ~ tournament.id ~ "/import?stage=" ~ stage.id) }}{% endif %}
 </div>
 
+{% if can_write %}
+{% set qv = vals if entry_kind|default("") == "quick" else {} %}
+{% set qf = ef if entry_kind|default("") == "quick" else none %}
+{% if quick_map_options|length > 1 %}
+<form class="toolbar quick-score" id="quick-score" method="post" action="/t/{{ tournament.id }}/scores" aria-label="Add a score">
+  {{ csrf_field(csrf_token) }}
+  <input type="hidden" name="entry_origin" value="quick">
+  {{ field("pool_map_id", "Map", options=quick_map_options, value=qv.pool_map_id|default(""), required=true, disabled=archived, id="quick-map", inline=true, error=entry_error if qf == "pool_map_id" else none) }}
+  {% if can_manage %}
+  {{ field("osu_id", "Player", options=player_options, value=qv.osu_id|default(user.osu_id|string), required=true, disabled=archived, id="quick-player", inline=true, error=entry_error if qf == "osu_id" else none) }}
+  {% endif %}
+  {{ field("score", "Score", value=qv.score|default(""), required=true, disabled=archived, id="quick-score-value", inline=true, inputmode="numeric", autocomplete="off", placeholder="e.g. 845 120", error=entry_error if qf == "score" else none) }}
+  {{ field("accuracy", "Acc %", value=qv.accuracy|default(""), disabled=archived, id="quick-acc", inline=true, inputmode="decimal", autocomplete="off", placeholder="e.g. 97.85", error=entry_error if qf == "accuracy" else none) }}
+  {{ field("mods_text", "Mods", value=qv.mods_text|default(""), disabled=archived, id="quick-mods", inline=true, autocomplete="off", placeholder="FM/TB only, e.g. HDHR", error=entry_error if qf == "mods" else none) }}
+  {{ button("Save score", variant="primary", type="submit", disabled=archived) }}
+</form>
+{% elif view.rows %}
+<p class="muted">Scores can be added once maps have an osu! beatmap.</p>
+{% endif %}
+{% endif %}
+
 {% if not view.columns %}
 {{ empty_state("This tournament has no players on its roster yet. Add them on the Members page.") }}
 {% else %}
 <div class="sheet">
-{% call table("Mappool sheet: best score of each player on each map") %}
+{% call table("Mappool sheet: best score of each player on each map", scroll=true) %}
 <thead>
   <tr>
     <th scope="col">Map</th>
@@ -134,7 +154,7 @@
   <h2 id="details-heading">Scores and notes per map</h2>
   {% for detail in view.details %}
   {% set m = detail.pool_map %}
-  {% set has_entry_error = entry_error and ef and entry_map_id|default("") == m.id|string %}
+  {% set has_entry_error = entry_error and ef and entry_kind|default("") != "quick" and entry_map_id|default("") == m.id|string %}
   <details class="map-detail"{% if has_entry_error %} open{% endif %}>
     <summary><span class="map-detail__title">{{ badge(m.slot) }} {{ map_name(m) }}</span> <span class="muted">{{ detail.scores|length }} {{ "score" if detail.scores|length == 1 else "scores" }}, {{ detail.notes|length }} {{ "note" if detail.notes|length == 1 else "notes" }}</span></summary>
     <div class="stack map-detail__body">
@@ -189,7 +209,7 @@
       {{ field("osu_id", "Player", options=player_options, value=sv.osu_id|default(user.osu_id|string), required=true, id="score-player-" ~ m.id, error=entry_error if sf == "osu_id" else none) }}
       {% endif %}
       {{ field("score", "Score", value=sv.score|default(""), required=true, id="score-score-" ~ m.id, inputmode="numeric", autocomplete="off", error=entry_error if sf == "score" else none, hint="Whole number, saved as " ~ scoring_label ~ ".") }}
-      {{ field("accuracy", "Accuracy (%)", value=sv.accuracy|default(""), required=true, id="score-acc-" ~ m.id, inputmode="decimal", autocomplete="off", error=entry_error if sf == "accuracy" else none, hint="From 0 to 100, for example 97.85.") }}
+      {{ field("accuracy", "Accuracy (%)", value=sv.accuracy|default(""), id="score-acc-" ~ m.id, inputmode="decimal", autocomplete="off", error=entry_error if sf == "accuracy" else none, hint="Optional. From 0 to 100, for example 97.85.") }}
       {% if m.is_freemod or m.is_tiebreaker %}
       <fieldset class="field{% if sf == 'mods' %} field--invalid{% endif %}">
         <legend class="field__label">Mods <span class="muted">(optional)</span></legend>

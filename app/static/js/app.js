@@ -33,7 +33,8 @@
     document.querySelectorAll("time[data-countdown]").forEach(function (el) {
       var remaining = new Date(el.getAttribute("datetime")) - Date.now();
       if (isNaN(remaining)) return;
-      el.textContent = remaining > 0 ? formatCountdown(remaining) : "Started";
+      var prefix = el.getAttribute("data-countdown-prefix") || "";
+      el.textContent = remaining > 0 ? prefix + formatCountdown(remaining) : "Started";
     });
   }
 
@@ -107,6 +108,15 @@
     if (target.value.charAt(0) === "/" && target.value.charAt(1) !== "/") {
       window.location.assign(target.value);
     }
+  });
+
+  // <form method="get" data-autosubmit novalidate> applies its filters as soon as one changes. GET
+  // forms only: a POST form must never send itself on a change. novalidate keeps a select left on
+  // its empty choice ("All stages") from blocking requestSubmit().
+  document.addEventListener("change", function (event) {
+    var form = event.target instanceof Element ? event.target.form : null;
+    if (!form || !form.hasAttribute("data-autosubmit") || form.method !== "get") return;
+    form.requestSubmit();
   });
 
   // <form data-disable-on-submit> turns its buttons off once sent, so a double click cannot repeat a

@@ -42,8 +42,9 @@
 {% call alert("error", "Events not saved") %}{{ form_error }}{% endcall %}
 {% endif %}
 
-<div class="row">
+<div class="toolbar">
   {{ button("Back to the match", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ match.id) }}
+  {{ button("Match stats", variant="secondary", href="/t/" ~ tournament.id ~ "/matches/" ~ match.id ~ "/stats") }}
   {% if can_edit and match.mp_match_id %}
   <form method="post" action="/t/{{ tournament.id }}/matches/{{ match.id }}/review/refresh">
     {{ csrf_field(csrf_token) }}

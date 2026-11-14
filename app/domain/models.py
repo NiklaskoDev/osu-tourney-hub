@@ -175,7 +175,8 @@ class Member:
 
 @dataclass(frozen=True)
 class Score:
-    """One score of one player on one beatmap. `mods` is canonical; `accuracy` is 0 to 100."""
+    """One score of one player on one beatmap. `mods` is canonical; `accuracy` is 0 to 100, or None
+    when a hand-entered score left it out."""
 
     id: int
     beatmap_id: int
@@ -184,7 +185,7 @@ class Score:
     mods: str
     score: int
     scoring: str
-    accuracy: float
+    accuracy: float | None
     max_combo: int | None
     misses: int | None
     passed: bool

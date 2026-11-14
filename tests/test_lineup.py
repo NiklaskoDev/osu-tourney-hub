@@ -175,3 +175,23 @@ def test_freemod_rules_only_apply_to_freemod_maps():
     )
 
     assert len(result[1].picks) == 2
+
+
+def test_a_score_without_accuracy_ranks_below_a_real_one_in_a_tie():
+    scores = [
+        score(101, 1, 800_000, accuracy=None),
+        score(101, 2, 800_000, accuracy=50.0),
+        score(101, 3, 800_000, accuracy=None),
+    ]
+
+    result = suggestion(scores, [1, 2, 3], size=2)
+
+    assert [pick.osu_id for pick in result[1].picks][0] == 2  # the real accuracy wins the tie
+    assert 2 in [pick.osu_id for pick in result[1].picks]
+    assert suggestion(scores[:2], [1, 2], size=1)[1].picks[0].osu_id == 2
+
+
+def test_a_missing_accuracy_never_beats_a_higher_score():
+    scores = [score(101, 1, 900_000, accuracy=None), score(101, 2, 800_000, accuracy=99.0)]
+
+    assert suggestion(scores, [1, 2], size=1)[1].picks[0].osu_id == 1

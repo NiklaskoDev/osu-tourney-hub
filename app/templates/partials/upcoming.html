@@ -1,0 +1,24 @@
+{#- The upcoming matches list of the home page; the first item is the next match. `items` are
+    schedule.UpcomingMatch (tournament + match view). The styleguide renders the same macro. -#}
+{% from "components/badge.html" import badge %}
+{% from "components/button.html" import button %}
+{% from "components/countdown.html" import countdown, local_time %}
+{% macro upcoming_list(items) -%}
+<ol class="upcoming">
+  {% for item in items %}
+  {% set match = item.view.match %}
+  <li class="upcoming__item{% if loop.first %} upcoming__item--next{% endif %}">
+    <div class="upcoming__time">
+      <span class="upcoming__when">{{ local_time(match.scheduled_at) }}</span>
+      <span class="muted">{{ countdown(match.scheduled_at, prefix="in ") }}</span>
+    </div>
+    <div class="upcoming__match">
+      {% if loop.first %}<h3>vs {{ item.view.opponent_name }}</h3>{% else %}<span class="upcoming__opponent">vs {{ item.view.opponent_name }}</span>{% endif %}
+      <span class="muted">{% if item.view.stage_name %}{{ item.view.stage_name }}{% endif %}{% if item.view.stage_name and match.label %} &middot; {% endif %}{{ match.label or "" }}</span>
+    </div>
+    <div class="upcoming__tournament">{{ badge(item.tournament.acronym or item.tournament.name) }}</div>
+    <div class="upcoming__action">{{ button("Open match", variant="text", icon_name="chevron-right", href="/t/" ~ item.tournament.id ~ "/matches/" ~ match.id) }}</div>
+  </li>
+  {% endfor %}
+</ol>
+{%- endmacro %}

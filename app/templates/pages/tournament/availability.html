@@ -1,18 +1,31 @@
 {% extends "layout/tournament.html" %}
 {% from "components/alert.html" import alert %}
 {% from "components/button.html" import button %}
+{% from "components/copy_button.html" import copy_button %}
 {% from "components/empty_state.html" import empty_state %}
 {% from "components/field.html" import field %}
+{% from "components/switch.html" import switch %}
 {% from "components/table.html" import table %}
-{% from "components/tabs.html" import tabs %}
 {% from "partials/availability_row.html" import slot_row %}
+{% from "partials/availability_timeline.html" import day_timeline %}
 {% block title %}Availability - {{ tournament.name }} - {% endblock %}
 {% block head_scripts %}<script src="/static/js/availability.js?v={{ app_version }}" defer></script>{% endblock %}
 
+{#- The UTC/Local switch: a GET form that applies as soon as it changes. Unchecked sends no `tz`, which means UTC. -#}
+{% macro zone_form() -%}
+<form method="get" action="/t/{{ tournament.id }}/availability" data-autosubmit novalidate>
+  <input type="hidden" name="week" value="{{ monday }}">
+  {% if view.is_local and not view.needs_detection %}<input type="hidden" name="zone" value="{{ view.name }}">{% endif %}
+  {% if editing %}<input type="hidden" name="edit" value="1">{% endif %}
+  {{ switch("tz", "UTC", "Local" ~ (" (" ~ view.name ~ ")" if view.is_local and not view.needs_detection else ""), checked=view.is_local, value="local", id="avail-tz") }}
+  <noscript>{{ button("Apply", variant="secondary", type="submit") }}</noscript>
+</form>
+{%- endmacro %}
+
 {% block tournament_content %}
 <div class="page__header">
-  <h1>Availability</h1>
-  <p class="muted">{{ tournament.name }}</p>
+  <h1>{% if editing %}Update availability{% else %}Availability{% endif %}</h1>
+  {% if editing %}<div>{{ button("Done", variant="secondary", href=view_url) }}</div>{% endif %}
 </div>
 
 {% if archived %}
@@ -24,28 +37,58 @@
 
 {% if not columns %}
 {{ empty_state("Nobody is on the roster yet, so there is nothing to show. Players appear here once they are added on the Members page.") }}
+{% elif not editing %}
+
+<div class="toolbar">
+  {% if can_update %}{{ button("Update my availability", variant="primary", href=edit_url) }}{% endif %}
+  {{ copy_button(share_url, "Share team availability", copied_label="Link copied") }}
+  {{ button("Export CSV", variant="text", icon_name="download", href="/t/" ~ tournament.id ~ "/export/availability.csv") }}
+  <div class="toolbar__end">
+    {{ button("Previous week", variant="secondary", href=previous_url) }}
+    {{ button("This week", variant="secondary", href=today_url) }}
+    {{ button("Next week", variant="secondary", href=next_url) }}
+    <strong class="toolbar__label">{{ week_label }}</strong>
+    {{ zone_form() }}
+  </div>
+</div>
+
+<ul class="legend" aria-label="Legend">
+  <li><span class="legend__swatch bar" data-state="yes"></span>Available</li>
+  <li><span class="legend__swatch bar" data-state="maybe"></span>Maybe</li>
+  <li><span class="legend__swatch bar" data-state="no"></span>Unavailable</li>
+  <li><span class="legend__swatch legend__swatch--unfilled"></span>Not filled in</li>
+  <li><span class="legend__swatch legend__swatch--match"></span>Match</li>
+</ul>
+
+{% if editable_id is none %}
+<p class="muted">You are not on the roster as a player, so you can look but not change anything.</p>
+{% endif %}
+
+<div class="timelines stack">
+  {% for day in days %}
+  {{ day_timeline(day, lineup_size, own_id) }}
+  {% endfor %}
+</div>
+<p class="muted">Bars show each 30-minute slot. A slot is free for a match when the answer is Yes for its whole 90 minutes. The share link opens in the time zone you are viewing; whoever opens it can switch.</p>
+
 {% else %}
 
-{{ tabs("Timezone", tz_tabs) }}
-
-<div class="row">
-  {{ button("Previous week", variant="secondary", href=previous_url) }}
-  {{ button("This week", variant="secondary", href=today_url) }}
-  {{ button("Next week", variant="secondary", href=next_url) }}
-  <p><strong>{{ week_label }}</strong> <span class="muted">in {{ view.name }}</span></p>
-</div>
-
-<div class="row row--top">
+<form class="toolbar" method="get" action="/t/{{ tournament.id }}/availability" data-autosubmit novalidate>
+  <input type="hidden" name="week" value="{{ monday }}">
+  <input type="hidden" name="edit" value="1">
+  {% if view.is_local and not view.needs_detection %}<input type="hidden" name="zone" value="{{ view.name }}">{% endif %}
   {% if can_pick_member %}
-  <form class="row" method="get" action="/t/{{ tournament.id }}/availability">
-    <input type="hidden" name="week" value="{{ monday }}">
-    {% if view.is_local %}<input type="hidden" name="tz" value="local">{% if not view.needs_detection %}<input type="hidden" name="zone" value="{{ view.name }}">{% endif %}{% endif %}
-    {{ field("member", "Edit availability of", options=member_options, value=member_value, id="avail-member", required=true) }}
-    {{ button("Show", variant="secondary", type="submit") }}
-  </form>
+  {{ field("member", "Editing", options=member_options, value=member_value, id="avail-member", hide_optional=true, inline=true) }}
   {% endif %}
-  {{ button("Export CSV", variant="secondary", icon_name="download", href="/t/" ~ tournament.id ~ "/export/availability.csv") }}
-</div>
+  {{ switch("tz", "UTC", "Local" ~ (" (" ~ view.name ~ ")" if view.is_local and not view.needs_detection else ""), checked=view.is_local, value="local", id="avail-tz") }}
+  <noscript>{{ button("Show", variant="secondary", type="submit") }}</noscript>
+  <div class="toolbar__end">
+    {{ button("Previous week", variant="secondary", href=previous_url) }}
+    {{ button("This week", variant="secondary", href=today_url) }}
+    {{ button("Next week", variant="secondary", href=next_url) }}
+    <strong class="toolbar__label">{{ week_label }}</strong>
+  </div>
+</form>
 
 {% if editable_id is none %}
 <p class="muted">You are not on the roster as a player, so you can look but not change anything.</p>
@@ -59,7 +102,7 @@
 </nav>
 
 <div class="sheet avail-grid" data-avail-grid data-post-url="/t/{{ tournament.id }}/availability" data-tz="{{ tz_mode }}" data-zone="{{ view.name if view.is_local and not view.needs_detection else '' }}" data-member="{{ editable_id if editable_id is not none else '' }}">
-  {% call table("Availability for " ~ week_label ~ ", times in " ~ view.name) %}
+  {% call table("Availability for " ~ week_label ~ ", times in " ~ view.name, scroll=true) %}
   <thead>
     <tr>
       <th scope="col">Time ({{ view.name }})</th>

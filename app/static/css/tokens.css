@@ -1,25 +1,40 @@
-/* Design tokens. Values are the approved design system (plan 001, "UI"). */
+/* Design tokens: "quiet instrument panel" (plan 003). Neutral surfaces; the accent is for actions,
+   focus and the current selection, every other colour encodes state.
+
+   Contrast (WCAG ratios, text token on --bg / --surface), light:
+   --text 15.3 / 16.9 · --text-muted 6.0 / 6.6 · --accent 5.8 / 6.3 · --success 4.8 / 5.3 ·
+   --warning 4.9 / 5.4 · --danger 5.9 / 6.5. Dark: --text 15.6 / 14.5 · --text-muted 7.3 / 6.8 ·
+   --accent 6.0 / 5.6 · --success 7.1 / 6.6 · --warning 8.0 / 7.4 · --danger 5.6 / 5.2.
+   The availability bars carry no text, so they are exempt; their meaning is also in the row summary. */
 
 :root {
   color-scheme: light dark;
 
   /* Neutrals */
-  --bg: #f6f6f4;
+  --bg: #f4f4f2;
   --surface: #ffffff;
-  --surface-2: #efefec;
-  --border: #dadad5;
-  --text: #1e1f22;
+  --surface-2: #eeeeeb;
+  --surface-3: #e6e6e2;
+  --border: #e2e2dd;
+  --border-strong: #c9c9c3;
+  --text: #1c1d20;
   --text-muted: #5b5d63;
 
   /* Accent: actions, focus and current selection only */
   --accent: #b0285f;
   --accent-contrast: #ffffff;
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
 
   /* State: always paired with a text label or an icon */
   --success: #2d7a4b;
   --warning: #9a5b00;
   --danger: #b3261e;
   --on-danger: #ffffff;
+
+  /* Availability bars */
+  --avail-yes: #3f9b63;
+  --avail-maybe: #d29a2c;
+  --avail-no: #c4554d;
 
   /* Type */
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
@@ -31,6 +46,7 @@
   --text-xl: 1.5rem;
   --text-2xl: 2rem;
   --weight-normal: 400;
+  --weight-medium: 500;
   --weight-strong: 600;
 
   /* Spacing */
@@ -43,34 +59,51 @@
   --space-7: 48px;
 
   /* Shape */
-  --radius-sm: 4px;
-  --radius-md: 6px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
   --shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.18);
 
-  /* Layout */
-  --max-table: 1280px;
-  --max-text: 72ch;
+  /* Controls: compact on a mouse, 44 px where a finger is the pointer */
+  --control-h: 36px;
+  --control-pad-x: 12px;
   --target-min: 44px;
+
+  /* Layout */
+  --sidebar-w: 15rem;
+  --topbar-h: 52px;
+  --gutter: clamp(16px, 2.2vw, 32px);
+  --max-text: 72ch;
+  --max-form: 40rem;
 
   /* Motion */
   --motion: 150ms;
 }
 
+@media (pointer: coarse) {
+  :root {
+    --control-h: 44px;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #17181b;
-    --surface: #1f2024;
-    --surface-2: #26282d;
-    --border: #34363c;
-    --text: #e8e8e6;
-    --text-muted: #a3a5ab;
+    --bg: #121316;
+    --surface: #191b1f;
+    --surface-2: #202328;
+    --surface-3: #272a30;
+    --border: #2a2d33;
+    --border-strong: #3a3e46;
+    --text: #ecebe8;
+    --text-muted: #9fa2aa;
     --accent: #e46a9a;
-    /* The plan lists white here, but white on this pink is only 3.1:1; dark text gives 5.8:1. */
-    --accent-contrast: #17181b;
-    --success: #5dbb83;
-    --warning: #e0a447;
-    --danger: #ef7a72;
-    --on-danger: #17181b;
+    /* White on this pink is only 3.1:1; dark text gives 6.0:1. */
+    --accent-contrast: #121316;
+    --success: #4fb37a;
+    --warning: #d9a03f;
+    --danger: #e2675f;
+    --on-danger: #121316;
+    --avail-no: #b5524b;
     --shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.5);
   }
 }

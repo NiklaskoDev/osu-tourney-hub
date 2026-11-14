@@ -25,6 +25,7 @@ h3 {
 
 h1 {
   font-size: var(--text-xl);
+  letter-spacing: -0.01em;
 }
 
 h2 {
@@ -96,8 +97,11 @@ code,
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  min-height: 56px;
-  padding: 0 var(--space-4);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: var(--topbar-h);
+  padding: 0 var(--gutter);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
@@ -116,10 +120,11 @@ code,
 .topbar__nav a {
   display: inline-flex;
   align-items: center;
-  min-height: var(--target-min);
+  min-height: var(--control-h);
   padding: 0 var(--space-2);
   color: var(--text-muted);
   font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   text-decoration: none;
 }
 
@@ -143,7 +148,7 @@ code,
 .topbar__user a {
   display: inline-flex;
   align-items: center;
-  min-height: var(--target-min);
+  min-height: var(--control-h);
   color: var(--text);
 }
 
@@ -156,17 +161,26 @@ code,
   border-radius: var(--radius-sm);
 }
 
+.avatar--round {
+  border-radius: 50%;
+}
+
+/* Pages use the whole window width; only forms and sign-in stay narrow. */
 .page {
   width: 100%;
-  max-width: var(--max-table);
-  margin: 0 auto;
-  padding: var(--space-5) var(--space-4) var(--space-7);
+  max-width: none;
+  padding: var(--space-5) var(--gutter) var(--space-7);
+}
+
+.page--narrow {
+  max-width: calc(var(--max-form) + 2 * var(--gutter));
+  margin-inline: auto;
 }
 
 .page__header {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-2) var(--space-4);
   margin-bottom: var(--space-5);
@@ -210,13 +224,15 @@ code,
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  min-height: var(--target-min);
-  padding: 0 var(--space-4);
+  height: var(--control-h);
+  padding: 0 var(--control-pad-x);
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font: inherit;
   font-size: var(--text-sm);
-  font-weight: var(--weight-strong);
+  font-weight: var(--weight-medium);
+  line-height: 1;
+  white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
   transition: background-color var(--motion), border-color var(--motion);
@@ -234,17 +250,22 @@ code,
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 85%, var(--text));
+  background: color-mix(in srgb, var(--accent) 92%, var(--text));
 }
 
 .btn--secondary {
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--text);
   border-color: var(--border);
 }
 
 .btn--secondary:hover:not(:disabled) {
-  background: var(--surface-2);
+  background: var(--surface-3);
+}
+
+.btn .icon {
+  width: 16px;
+  height: 16px;
 }
 
 .btn--danger {
@@ -253,7 +274,7 @@ code,
 }
 
 .btn--danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--danger) 85%, var(--text));
+  background: color-mix(in srgb, var(--danger) 92%, var(--text));
 }
 
 .btn--text {
@@ -275,28 +296,57 @@ code,
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  max-width: 28rem;
+  min-width: 0;
+  max-width: min(28rem, 100%);
 }
 
 .field__label {
   font-size: var(--text-sm);
-  font-weight: var(--weight-strong);
+  font-weight: var(--weight-medium);
 }
 
 .field__control {
-  min-height: var(--target-min);
-  padding: var(--space-2) var(--space-3);
+  max-width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--control-pad-x);
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   font: inherit;
+  font-size: var(--text-sm);
   transition: border-color var(--motion);
 }
 
+.field__control:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.field__control:focus {
+  border-color: var(--accent);
+}
+
 textarea.field__control {
+  height: auto;
   min-height: 6rem;
+  padding: var(--space-2) var(--control-pad-x);
   resize: vertical;
+}
+
+/* The chevron is a data: image (the CSP allows data: in img-src); one per colour scheme. */
+select.field__control {
+  appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235b5d63' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  select.field__control {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239fa2aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
 }
 
 .field__control:disabled {
@@ -323,14 +373,86 @@ textarea.field__control {
   border-width: 2px;
 }
 
-/* Data table: sticky header and first column, scrolls inside its container */
+/* Label beside the control, for toolbars; hint and error stay under the row. */
+.field--inline {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  max-width: none;
+}
+
+.field--inline .field__label {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.field--inline .field__hint,
+.field--inline .field__error {
+  flex-basis: 100%;
+}
+
+/* Filters and actions in one aligned row, no box. */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.toolbar__end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+form.stack {
+  max-width: var(--max-form);
+}
+
+form.stack:has(.table-wrap) {
+  max-width: none;
+}
+
+/* Data table. The page scrolls, not the table: the header sticks below the top bar from 1024 px.
+   Below that the wrapper scrolls sideways, so the header cannot stick to the page (accepted).
+   `.table-wrap--scroll` is for wide sheets: one viewport-tall box that keeps header and first column. */
 .table-wrap {
+  position: relative;
   max-width: 100%;
-  max-height: 28rem;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+
+@media (min-width: 1024px) {
+  .table-wrap:not(.table-wrap--scroll) {
+    overflow: visible;
+  }
+
+  .table-wrap:not(.table-wrap--scroll) .table thead th {
+    position: sticky;
+    top: var(--topbar-h);
+  }
+
+  .table-wrap:not(.table-wrap--scroll) .table thead tr:first-child th:first-child {
+    border-top-left-radius: var(--radius-md);
+  }
+
+  .table-wrap:not(.table-wrap--scroll) .table thead tr:first-child th:last-child {
+    border-top-right-radius: var(--radius-md);
+  }
+}
+
+.table-wrap--scroll {
+  max-height: calc(100dvh - var(--topbar-h) - var(--space-6));
+  overflow: auto;
 }
 
 .table {
@@ -342,34 +464,43 @@ textarea.field__control {
 
 .table th,
 .table td {
+  height: 40px;
   padding: var(--space-2) var(--space-3);
   text-align: left;
-  white-space: nowrap;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
 
+.table th[scope="row"],
+.table .is-numeric,
+.table .nowrap {
+  white-space: nowrap;
+}
+
 .table thead th {
-  position: sticky;
-  top: 0;
   z-index: 2;
   background: var(--surface-2);
-  font-weight: var(--weight-strong);
+  font-weight: var(--weight-medium);
+}
+
+.table-wrap--scroll .table thead th {
+  position: sticky;
+  top: 0;
 }
 
 .table tbody th {
-  font-weight: var(--weight-strong);
+  font-weight: var(--weight-medium);
 }
 
-.table th:first-child,
-.table td:first-child {
+.table-wrap--scroll .table th:first-child,
+.table-wrap--scroll .table td:first-child {
   position: sticky;
   left: 0;
   z-index: 1;
   border-right: 1px solid var(--border);
 }
 
-.table thead th:first-child {
+.table-wrap--scroll .table thead th:first-child {
   z-index: 3;
 }
 
@@ -407,8 +538,10 @@ textarea.field__control {
 .tabs__tab {
   display: inline-flex;
   align-items: center;
-  min-height: var(--target-min);
+  min-height: var(--control-h);
   padding: 0 var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
   color: var(--text-muted);
   text-decoration: none;
   white-space: nowrap;
@@ -420,8 +553,7 @@ textarea.field__control {
 }
 
 .tabs__tab[aria-current="page"] {
-  color: var(--accent);
-  font-weight: var(--weight-strong);
+  color: var(--text);
   border-bottom-color: var(--accent);
 }
 
@@ -431,7 +563,6 @@ textarea.field__control {
   padding: 0 var(--space-2);
   background: var(--surface-2);
   color: var(--text);
-  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--text-xs);
@@ -443,7 +574,7 @@ textarea.field__control {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--target-min);
+  min-height: var(--control-h);
   font-size: var(--text-sm);
   cursor: pointer;
 }
@@ -484,21 +615,49 @@ textarea.field__control {
   border-top: 1px solid var(--border);
 }
 
-/* Tournament layout: left nav, a select on narrow screens */
+/* Tournament layout: the nav is pinned to the left window edge; a select on narrow screens */
 .tournament-layout {
   display: grid;
-  grid-template-columns: 12rem minmax(0, 1fr);
-  gap: var(--space-5);
-  align-items: start;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  min-height: calc(100dvh - var(--topbar-h));
 }
 
 .tournament-layout__content {
   min-width: 0;
+  align-self: start;
+  padding: var(--space-5) var(--gutter) var(--space-7);
+}
+
+.side-nav {
+  position: sticky;
+  top: var(--topbar-h);
+  height: calc(100dvh - var(--topbar-h));
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-3);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.side-nav__head {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.side-nav__name {
+  overflow: hidden;
+  font-weight: var(--weight-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-nav__meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 .side-nav__list {
   display: flex;
   flex-direction: column;
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -507,21 +666,30 @@ textarea.field__control {
 .side-nav__link {
   display: flex;
   align-items: center;
-  min-height: var(--target-min);
+  min-height: 36px;
   padding: 0 var(--space-3);
   color: var(--text-muted);
+  font-size: var(--text-sm);
   text-decoration: none;
-  border-left: 2px solid transparent;
+  border-radius: var(--radius-sm);
+}
+
+@media (pointer: coarse) {
+  .side-nav__link {
+    min-height: var(--target-min);
+  }
 }
 
 .side-nav__link:hover {
+  background: var(--surface-3);
   color: var(--text);
 }
 
 .side-nav__link[aria-current="page"] {
-  color: var(--accent);
-  font-weight: var(--weight-strong);
-  border-left-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: var(--weight-medium);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .side-nav__select {
@@ -602,17 +770,20 @@ textarea.field__control {
   margin-top: var(--space-5);
 }
 
-/* Pool sheet: taller scroll area, map names that truncate, a second line under a score */
-.sheet .table-wrap {
-  max-height: 70vh;
-}
-
+/* Map names truncate; a second line goes under a score */
 .map-name {
   display: inline-block;
   max-width: 20rem;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   vertical-align: bottom;
+}
+
+@media (min-width: 768px) {
+  .map-name {
+    max-width: 22rem;
+  }
 }
 
 /* On a phone the sticky first column must leave room for the scores beside it */
@@ -662,7 +833,7 @@ textarea.field__control {
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-3);
-  min-height: var(--target-min);
+  min-height: var(--control-h);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
 }
@@ -712,14 +883,29 @@ fieldset.field {
   list-style: none;
 }
 
-.picks__mods {
-  width: 7rem;
+/* Column balance: the map column is wide, notes are narrow, players take the rest */
+.col-map {
+  width: 26rem;
+}
+
+.col-notes {
+  width: 16rem;
 }
 
 .slot-edit {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
   gap: var(--space-2);
+}
+
+.slot-edit__pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.slot-edit__pick .field {
+  max-width: none;
 }
 
 /* Countdown and relative times */
@@ -918,6 +1104,30 @@ fieldset.field {
   --chip: var(--border);
 }
 
+.swatch__chip--surface-3 {
+  --chip: var(--surface-3);
+}
+
+.swatch__chip--border-strong {
+  --chip: var(--border-strong);
+}
+
+.swatch__chip--accent-soft {
+  --chip: var(--accent-soft);
+}
+
+.swatch__chip--avail-yes {
+  --chip: var(--avail-yes);
+}
+
+.swatch__chip--avail-maybe {
+  --chip: var(--avail-maybe);
+}
+
+.swatch__chip--avail-no {
+  --chip: var(--avail-no);
+}
+
 .swatch__chip--text {
   --chip: var(--text);
 }
@@ -982,7 +1192,22 @@ fieldset.field {
 
   .tournament-layout {
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-4);
+  }
+
+  .tournament-layout__content {
+    padding-top: var(--space-4);
+  }
+
+  .side-nav {
+    position: static;
+    height: auto;
+    padding: var(--space-3) var(--gutter);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .side-nav__head {
+    padding: 0 0 var(--space-2);
   }
 
   .side-nav__list {
@@ -997,11 +1222,17 @@ fieldset.field {
     width: 100%;
   }
 
+  /* A wrapped bar would eat a phone screen, so it scrolls away there. */
   .topbar {
+    position: static;
     flex-wrap: wrap;
     gap: 0 var(--space-3);
     padding-top: var(--space-1);
     padding-bottom: var(--space-1);
+  }
+
+  .toolbar__end {
+    margin-left: 0;
   }
 }
 
@@ -1071,4 +1302,427 @@ fieldset.field {
 
 #live-state > .live {
   animation: live-update var(--motion) ease-out;
+}
+
+.stack--loose {
+  gap: var(--space-6);
+}
+
+.toolbar__label {
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+/* Switch: a real checkbox, visually hidden, with a track. Off reads the left label, on the right. */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.switch__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.switch__track {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  background: var(--border-strong);
+  border-radius: 10px;
+  transition: background-color var(--motion);
+}
+
+.switch__track::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--surface);
+  border-radius: 50%;
+  content: "";
+  transition: transform var(--motion);
+}
+
+.switch__input:checked + .switch__track {
+  background: var(--accent);
+}
+
+.switch__input:checked + .switch__track::after {
+  background: var(--accent-contrast);
+  transform: translateX(16px);
+}
+
+.switch__input:focus-visible + .switch__track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.switch__input:disabled + .switch__track {
+  opacity: 0.5;
+}
+
+/* The side that is on reads as chosen */
+.switch:has(.switch__input:not(:checked)) .switch__text:first-child,
+.switch:has(.switch__input:checked) .switch__text:last-child {
+  color: var(--text);
+}
+
+@media (pointer: coarse) {
+  .switch {
+    min-height: var(--target-min);
+  }
+}
+
+/* Availability timeline: one table per day, a bar row per player */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  list-style: none;
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.legend__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.legend__swatch.bar {
+  height: 12px;
+  margin: 0;
+}
+
+.legend__swatch--unfilled {
+  outline: 1px dashed var(--text-muted);
+  outline-offset: -1px;
+}
+
+.legend__swatch--match {
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* position: relative keeps the absolutely placed visually-hidden labels inside the scroll area, so
+   they cannot widen the page on a phone */
+.timeline-wrap {
+  position: relative;
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.timeline {
+  width: 100%;
+  min-width: 64rem;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.timeline__label-col {
+  width: 13rem;
+}
+
+.timeline th,
+.timeline td {
+  padding: 0;
+  text-align: left;
+  font-weight: var(--weight-normal);
+}
+
+.timeline thead th {
+  height: 32px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline__day {
+  padding: 0 var(--space-3);
+  font-weight: var(--weight-strong);
+}
+
+.timeline__hour {
+  padding-left: var(--space-1);
+  border-left: 1px solid var(--border);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.timeline tbody tr {
+  height: 36px;
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline tbody tr:last-child {
+  border-bottom: 0;
+}
+
+.timeline__who {
+  padding: 0 var(--space-3);
+  font-weight: var(--weight-medium);
+}
+
+.timeline__person {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.timeline__person .avatar {
+  width: 24px;
+  height: 24px;
+}
+
+.timeline__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline__check {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--success);
+}
+
+.bar {
+  display: block;
+  height: 18px;
+  margin: 0 1px;
+  border-radius: 4px;
+}
+
+.bar[data-state="yes"] {
+  background: var(--avail-yes);
+}
+
+.bar[data-state="maybe"] {
+  background: var(--avail-maybe);
+}
+
+.bar[data-state="no"] {
+  background: var(--avail-no);
+}
+
+.is-unfilled .bar {
+  background: transparent;
+  outline: 1px dashed var(--text-muted);
+  outline-offset: -1px;
+  opacity: 0.35;
+}
+
+.timeline__matches td,
+.timeline__free td {
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.timeline__free td {
+  padding-left: var(--space-1);
+  color: var(--text-muted);
+}
+
+.timeline__free td.is-enough {
+  color: var(--success);
+  font-weight: var(--weight-strong);
+}
+
+.timeline__band {
+  display: block;
+  height: 22px;
+  margin: 0 1px;
+  padding: 0 var(--space-1);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 20%, var(--surface));
+  border-radius: 4px;
+  box-shadow: inset 3px 0 0 var(--accent);
+  line-height: 22px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline__band--cont {
+  box-shadow: none;
+}
+
+/* Upcoming matches on the home page */
+.upcoming {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.upcoming__item {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.upcoming__item:last-child {
+  border-bottom: 0;
+}
+
+.upcoming__item--next {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.upcoming__time,
+.upcoming__match {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.upcoming__time .muted {
+  font-size: var(--text-xs);
+}
+
+.upcoming__match .muted {
+  font-size: var(--text-sm);
+}
+
+.upcoming__when,
+.upcoming__opponent {
+  font-weight: var(--weight-medium);
+}
+
+.upcoming__match h3 {
+  font-size: var(--text-lg);
+}
+
+@media (max-width: 767px) {
+  .upcoming__item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .upcoming__time {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
+    align-items: baseline;
+  }
+
+  .col-map {
+    width: auto;
+  }
+}
+
+/* Quick score bar above the pool sheet */
+.quick-score {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.quick-score .field__control {
+  min-width: 0;
+}
+
+/* Sized to what goes in them, so the whole bar fits one row on a desktop */
+.quick-score select.field__control {
+  width: 18rem;
+}
+
+.quick-score input.field__control {
+  width: 8rem;
+}
+
+.quick-score input[name="mods_text"] {
+  width: 12rem;
+}
+
+@media (max-width: 767px) {
+  .quick-score .field,
+  .quick-score .field__control,
+  .quick-score select.field__control,
+  .quick-score input.field__control,
+  .quick-score input[name="mods_text"] {
+    width: 100%;
+  }
+
+  .quick-score .field--inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* Match stats: per-map detail under the map row, winners in bold */
+.map-detail--stats {
+  margin-top: var(--space-1);
+}
+
+.is-winner {
+  font-weight: var(--weight-strong);
+}
+
+.stats-score {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scanner: the confirmation panel keeps its place in the section */
+.confirm-panel {
+  max-width: var(--max-text);
+}
+
+/* A table inside a table row (per-player scores under a map): no sticky header of its own */
+.table-wrap .table.table--nested thead th {
+  position: static;
+}
+
+.table--nested th,
+.table--nested td {
+  height: 32px;
+}
+
+.table .is-winner,
+.table tr.is-winner th,
+.table tr.is-winner td {
+  font-weight: var(--weight-strong);
+}
+
+/* Scanner: a two-column status table stays readable instead of stretching across the window */
+#scanner-status {
+  max-width: 64rem;
+}
+
+#scanner-start {
+  width: min(32rem, 100%);
 }

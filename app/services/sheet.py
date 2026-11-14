@@ -66,8 +66,10 @@ def is_old(score: Score, now: datetime) -> bool:
 
 
 def rank_key(score: Score) -> tuple[int, float, str, int]:
-    """Larger is better: score, then accuracy, then the more recent one, then the later row."""
-    return (score.score, score.accuracy, score.played_at, score.id)
+    """Larger is better: score, then accuracy (a missing one ranks below any real one), then the
+    more recent one, then the later row."""
+    accuracy = score.accuracy if score.accuracy is not None else -1.0
+    return (score.score, accuracy, score.played_at, score.id)
 
 
 def accepts_mods(pool_map: PoolMap, mods: str) -> bool:
@@ -118,7 +120,7 @@ def map_average(
     chosen = [best[(o, pool_map.id)].overall for o in osu_ids if (o, pool_map.id) in best]
     if not chosen:
         return None, None, 0
-    return _mean(s.score for s in chosen), _mean(s.accuracy for s in chosen), len(chosen)
+    return _mean(s.score for s in chosen), _mean_accuracy(s.accuracy for s in chosen), len(chosen)
 
 
 def team_average(
@@ -133,7 +135,7 @@ def team_average(
         return Average(None, None, 0, len(maps))
     return Average(
         _mean(score for score, _ in played),
-        _mean(accuracy for _, accuracy in played),
+        _mean_accuracy(accuracy for _, accuracy in played),
         len(played),
         len(maps),
     )
@@ -143,13 +145,22 @@ def _average(chosen: list[Score], total: int) -> Average:
     if not chosen:
         return Average(None, None, 0, total)
     return Average(
-        _mean(s.score for s in chosen), _mean(s.accuracy for s in chosen), len(chosen), total
+        _mean(s.score for s in chosen),
+        _mean_accuracy(s.accuracy for s in chosen),
+        len(chosen),
+        total,
     )
 
 
 def _mean(values: Iterable[float]) -> float:
     numbers = list(values)
     return sum(numbers) / len(numbers)
+
+
+def _mean_accuracy(values: Iterable[float | None]) -> float | None:
+    """Mean of the accuracies that are there; None when no score has one."""
+    numbers = [value for value in values if value is not None]
+    return sum(numbers) / len(numbers) if numbers else None
 
 
 def _as_double_time(mods: str) -> tuple[str, ...]:

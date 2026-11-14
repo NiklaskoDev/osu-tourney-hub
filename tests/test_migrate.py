@@ -815,3 +815,57 @@ def test_a_match_event_keeps_its_row_when_its_map_is_deleted(migrated):
 
     row = migrated.execute("SELECT pool_map_id, beatmap_id FROM match_events").fetchone()
     assert tuple(row) == (None, 5)
+
+
+# --- 0008: a score may have no accuracy ---
+
+INSERT_SCORE = (
+    "INSERT INTO scores (beatmap_id, osu_id, gamemode, mods, score, scoring, accuracy, source, "
+    "source_ref, created_at) VALUES (1001, 2002, 0, '', 800000, 'v2', ?, 'manual', ?, "
+    "'2026-11-01T00:00:00Z')"
+)
+
+
+def insert_score_row(conn, accuracy, ref="r1"):
+    conn.execute(INSERT_SCORE, (accuracy, ref))
+
+
+@pytest.fixture
+def before_0008(conn, clock, tmp_path):
+    """A database at migration 0007 with one score, then migrated to the current schema."""
+    older = tmp_path / "older"
+    older.mkdir()
+    for migration in discover_migrations(MIGRATIONS_DIR):
+        if migration.version < 8:
+            (older / migration.name).write_text(migration.sql, "utf-8")
+    migrate(conn, clock, older)
+    insert_score_row(conn, 97.5)
+    assert migrate(conn, clock) == [8]
+    return conn
+
+
+def test_0008_keeps_the_scores_and_the_indexes(before_0008):
+    rows = before_0008.execute("SELECT osu_id, score, accuracy, source_ref FROM scores").fetchall()
+    assert [tuple(row) for row in rows] == [(2002, 800_000, 97.5, "r1")]
+    names = {
+        row["name"]
+        for row in before_0008.execute("SELECT name FROM sqlite_master WHERE type = 'index'")
+    }
+    assert {"scores_beatmap_player_mods", "scores_osu_id", "scores_tournament_id"} <= names
+    assert "scores_new" not in table_names(before_0008)
+
+
+def test_0008_accepts_an_empty_accuracy_but_still_rejects_one_outside_0_to_100(before_0008):
+    insert_score_row(before_0008, None, "r2")
+    stored = before_0008.execute("SELECT accuracy FROM scores WHERE source_ref = 'r2'").fetchone()
+    assert stored[0] is None
+
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_score_row(before_0008, 101, "r3")
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_score_row(before_0008, -1, "r4")
+
+
+def test_0008_keeps_the_uniqueness_of_a_score_per_source_and_player(before_0008):
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_score_row(before_0008, 90.0, "r1")

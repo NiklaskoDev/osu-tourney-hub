@@ -16,9 +16,11 @@ import sqlite3
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 
 from app.clients.osu import OsuClient, OsuError, OsuNotFound
 from app.clients.ratelimit import Priority
+from app.clock import to_utc_iso
 from app.db.connection import transaction
 from app.domain.models import Match, MpGame, PoolMap, Stage, Team, Tournament
 from app.domain.parsing import parse_uint
@@ -27,6 +29,7 @@ from app.repos import lobbies as lobbies_repo
 from app.repos import match_events as events_repo
 from app.repos import matches as matches_repo
 from app.repos import predictions as predictions_repo
+from app.repos import scores as scores_repo
 from app.repos import stages as stages_repo
 from app.repos import teams as teams_repo
 from app.repos.match_events import MatchEvent
@@ -231,6 +234,7 @@ async def refresh_from_lobby(
     conn: sqlite3.Connection,
     osu: OsuClient,
     match: Match,
+    now: datetime,
     priority: Priority = Priority.INTERACTIVE,
 ) -> int:
     """Read the match's lobby and make its lobby events what the games show. Returns how many
@@ -242,22 +246,59 @@ async def refresh_from_lobby(
     fetched = await osu.fetch_match(match.mp_match_id, priority=priority)
     if fetched.truncated:
         logger.warning("Lobby %s has more events than were read", match.mp_match_id)
-    return store_lobby_events(conn, match, fetched.events)
+    return store_lobby_events(conn, match, fetched.events, now)
 
 
-def store_lobby_events(conn: sqlite3.Connection, match: Match, lobby_events: list[dict]) -> int:
-    """Make the match's lobby events what the raw osu! events of its lobby show. Returns how many
-    events that gave."""
+def store_lobby_events(
+    conn: sqlite3.Connection, match: Match, lobby_events: list[dict], now: datetime
+) -> int:
+    """Make the match's lobby events what the raw osu! events of its lobby show, and keep the
+    players' scores of its pool games (the match stats page shows them). Returns how many events
+    that gave."""
     pool = stages_repo.list_maps(conn, match.stage_id) if match.stage_id is not None else []
-    events = derive_mp_events(mp_parse.parse_games(lobby_events), pool, _membership(conn, match))
+    membership = _membership(conn, match)
+    games = mp_parse.parse_games(lobby_events)
+    events = derive_mp_events(games, pool, membership)
     with transaction(conn):
         events_repo.replace_source(conn, match.id, "mp", events)
         _realign(conn, match.id)
+        _store_player_scores(conn, match, games, pool, membership, to_utc_iso(now))
     return len(events)
 
 
+def _store_player_scores(
+    conn: sqlite3.Connection,
+    match: Match,
+    games: list[MpGame],
+    pool: list[PoolMap],
+    membership: Mapping[int, int],
+    created_at: str,
+) -> None:
+    """The scores of both teams' rostered players on pool maps (every map when the pool is not
+    known). Stored once per game and player, so reading a lobby again adds nothing."""
+    if match.mp_match_id is None:
+        return
+    in_pool = {m.beatmap_id for m in pool if m.beatmap_id is not None}
+    for game in games:
+        if not game.scores or (in_pool and game.beatmap_id not in in_pool):
+            continue
+        for score in game.scores:
+            if score.osu_id in membership:
+                scores_repo.insert_mp(
+                    conn,
+                    match.mp_match_id,
+                    game.game_id,
+                    game.beatmap_id,
+                    game.gamemode,
+                    game.scoring,
+                    game.played_at,
+                    score,
+                    created_at,
+                )
+
+
 async def import_pending(
-    conn: sqlite3.Connection, osu: OsuClient, limit: int = LOBBIES_PER_RUN
+    conn: sqlite3.Connection, osu: OsuClient, now: datetime, limit: int = LOBBIES_PER_RUN
 ) -> int:
     """Read the lobbies of finished matches that have none read yet, a few per run, each once (a
     person can read one again from the review page). When osu! fails the error is raised and the
@@ -266,7 +307,7 @@ async def import_pending(
     read = 0
     for match in matches_repo.list_played_with_lobby(conn, limit, READ_PREFIX):
         try:
-            await refresh_from_lobby(conn, osu, match, Priority.CAPTURE)
+            await refresh_from_lobby(conn, osu, match, now, Priority.CAPTURE)
         except OsuNotFound:
             logger.info("Match %s names a lobby osu! does not have", match.id)
         except OsuError:

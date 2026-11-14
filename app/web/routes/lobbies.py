@@ -12,7 +12,7 @@ from app.domain.models import Role
 from app.domain.parsing import parse_uint
 from app.repos import lobbies as lobbies_repo
 from app.repos import stages as stages_repo
-from app.services import lobby_list
+from app.services import lobby_list, pool_sheet
 from app.services.links import match_id
 from app.services.lobbies import import_lobby
 from app.web.deps import (
@@ -40,7 +40,7 @@ def _page(
     request: Request,
     access: TournamentAccess,
     db: sqlite3.Connection,
-    stage_ref: str = "",
+    stage_ref: str | None = "",
     player_ref: str = "",
     status_code: int = 200,
     **extra: Any,
@@ -48,6 +48,12 @@ def _page(
     tournament = access.tournament
     stages = stages_repo.list_for_tournament(db, tournament.id)
     stage_id = next((s.id for s in stages if str(s.id) == stage_ref), None)
+    if stage_ref is None:
+        # No `stage` in the query at all: an active tournament opens on the current round. An empty
+        # `stage=` is the user's choice of "All stages".
+        now = pool_sheet.stage_clock_now(tournament, request.app.state.clock)
+        current = pool_sheet.current_stage(stages, now) if now is not None else None
+        stage_id = current.id if current else None
     player_id = parse_uint(player_ref)
     context: dict[str, Any] = {
         "access": access,
@@ -70,7 +76,7 @@ def _page(
 @router.get("", response_class=HTMLResponse)
 async def lobbies_page(
     request: Request,
-    stage: str = "",
+    stage: str | None = None,
     player: str = "",
     access: TournamentAccess = Depends(member_access),
     db: sqlite3.Connection = Depends(get_db),

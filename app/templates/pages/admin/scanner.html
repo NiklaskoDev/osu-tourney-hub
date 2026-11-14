@@ -1,8 +1,11 @@
 {% extends "layout/shell.html" %}
+{% from "components/alert.html" import alert %}
+{% from "components/badge.html" import badge %}
 {% from "components/button.html" import button %}
 {% from "components/countdown.html" import local_time %}
 {% from "components/csrf.html" import csrf_field %}
 {% from "components/empty_state.html" import empty_state %}
+{% from "components/field.html" import field %}
 {% from "components/table.html" import table %}
 {% block title %}Scanner - {% endblock %}
 {% block content %}
@@ -24,15 +27,46 @@
     {% endif %}
   </section>
 
+  {% if status.enabled %}
+  <section class="stack" aria-labelledby="start-heading">
+    <h2 id="start-heading">Start from a lobby id</h2>
+    {% if pending_start is defined and pending_start %}
+    <div class="confirm-panel">
+      {% call alert("warning", "Read " ~ "{:,}".format(pending_start.size) ~ " lobby ids?") %}
+      <p>Ids {{ "{:,}".format(pending_start.start_id) }} to {{ "{:,}".format(pending_start.end_id) }} will be read with spare budget only.
+      {% if pending_eta_text %}At the current spare rate this takes {{ pending_eta_text }} (rough estimate).{% else %}There is no spare budget right now, so it starts once the live scan has caught up.{% endif %}
+      {% if pending_start.merged_gap_ids %}It replaces {{ pending_start.merged_gap_ids|length }} skipped {{ "range" if pending_start.merged_gap_ids|length == 1 else "ranges" }} it covers.{% endif %}</p>
+      <form class="row" method="post" action="/admin/scanner/start">
+        {{ csrf_field(csrf_token) }}
+        <input type="hidden" name="start" value="{{ start_entered }}">
+        <input type="hidden" name="confirmed" value="1">
+        <button class="btn btn--primary" type="submit" autofocus><span>Start backfill</span></button>
+        {{ button("Cancel", variant="text", href="/admin/scanner") }}
+      </form>
+      {% endcall %}
+    </div>
+    {% endif %}
+    <form class="toolbar" method="post" action="/admin/scanner/start">
+      {{ csrf_field(csrf_token) }}
+      {{ field("start", "Lobby id or link", value=start_entered|default(""), required=true, inline=true, id="scanner-start", placeholder="e.g. 119876543 or https://osu.ppy.sh/community/matches/119876543", autocomplete="off", error=start_error|default(none)) }}
+      {{ button("Start from this id", variant="secondary", type="submit") }}
+    </form>
+    <p class="muted">An older id is read in the background with spare budget, oldest first, while the live scan carries on.</p>
+    <p class="muted">A newer id than the scanner's position ({{ status.cursor_id if status.cursor_id is not none else "not known yet" }}) skips the ids in between; they are listed below and can be backfilled.</p>
+    <p class="muted">The newest id osu! has listed is {{ status.head_id if status.head_id is not none else "not known yet" }}.</p>
+  </section>
+  {% endif %}
+
   <section class="stack" aria-labelledby="gaps-heading">
     <h2 id="gaps-heading">Skipped ranges</h2>
     {% if status.gaps %}
-    <p class="muted">Ranges of lobby ids the scanner skipped to stay recent. A backfill reads them oldest first, and only while the scanner is nearly caught up.</p>
+    <p class="muted">Ranges of lobby ids that were not scanned live. A backfill reads them oldest first, and only while the scanner is nearly caught up.</p>
     {% call table("Skipped lobby id ranges") %}
     <thead>
       <tr>
         <th scope="col">Ids</th>
         <th scope="col">Size</th>
+        <th scope="col">Why</th>
         <th scope="col">Skipped</th>
         <th scope="col">Backfill</th>
       </tr>
@@ -42,10 +76,16 @@
       <tr>
         <th scope="row"><span class="mono">{{ gap.start_id }} to {{ gap.end_id }}</span></th>
         <td class="num">{{ "{:,}".format(gap.size) }}</td>
+        <td>{{ badge(gap_reasons.get(gap.reason, gap.reason)) }}</td>
         <td>{{ local_time(gap.created_at) }}</td>
         <td>
           {% if gap.backfill_done %}Done
-          {% elif gap.backfill_requested %}{{ "{:,}".format(gap.backfilled_until - gap.start_id + 1) }} of {{ "{:,}".format(gap.size) }} ids read
+          {% elif gap.backfill_requested %}
+          <form class="row" method="post" action="/admin/scanner/gaps/{{ gap.id }}/stop">
+            {{ csrf_field(csrf_token) }}
+            <span>{{ "{:,}".format(gap.backfilled_until - gap.start_id + 1) }} of {{ "{:,}".format(gap.size) }} ids read</span>
+            {{ button("Stop", variant="text", type="submit") }}
+          </form>
           {% else %}
           <form method="post" action="/admin/scanner/gaps/{{ gap.id }}/backfill">
             {{ csrf_field(csrf_token) }}

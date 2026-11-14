@@ -1,0 +1,57 @@
+{#- One day of the availability timeline: a row of bars per player (green, amber, red), the match row
+    and how many are free. `day` is an availability.DayTimeline. Bars carry no text: the row header
+    holds the spoken summary, so the cells are hidden from screen readers. A row's cells add up to
+    day.slot_count so the table stays rectangular. -#}
+{% from "components/icon.html" import icon %}
+{% set state_words = {"yes": "Available", "maybe": "Maybe", "no": "Unavailable"} %}
+{% macro day_timeline(day, lineup_size, own_id) -%}
+<div class="timeline-wrap" id="{{ day.anchor }}" role="region" aria-label="Availability on {{ day.day_label }}" tabindex="0">
+  <table class="timeline">
+    <colgroup>
+      <col class="timeline__label-col">
+      {%- for _ in range(day.slot_count) %}<col>{% endfor %}
+    </colgroup>
+    <thead>
+      <tr>
+        <th scope="col" class="timeline__day">{{ day.day_label }}</th>
+        {%- for hour in day.hours %}
+        <th scope="col" colspan="{{ hour.span }}" class="timeline__hour">{{ hour.label }}</th>
+        {%- endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% if day.has_match %}
+      <tr class="timeline__matches">
+        <th scope="row" class="timeline__who">Matches</th>
+        {%- for run in day.bands %}
+        <td colspan="{{ run.span }}">{% if run.label %}<span class="timeline__band" title="{{ run.label }}">{{ run.label }}</span>{% elif run.in_match %}<span class="timeline__band timeline__band--cont" aria-hidden="true"></span>{% endif %}</td>
+        {%- endfor %}
+      </tr>
+      {% endif %}
+      {% for row in day.rows %}
+      <tr class="timeline__row{% if not row.filled %} is-unfilled{% endif %}">
+        <th scope="row" class="timeline__who">
+          <div class="timeline__person">
+            {% if row.column.avatar_url %}<img class="avatar avatar--round" src="{{ row.column.avatar_url }}" alt="" width="24" height="24">{% endif %}
+            <span class="timeline__name" title="{{ row.column.name }}">{{ row.column.name }}</span>
+            {% if row.column.osu_id == own_id %}<span class="muted">(you)</span>{% endif %}
+            {% if row.filled %}<span class="timeline__check">{{ icon("check") }}<span class="visually-hidden">filled in</span></span>{% endif %}
+            <span class="visually-hidden">: {{ row.summary }}</span>
+          </div>
+        </th>
+        {%- for run in row.runs %}
+        <td colspan="{{ run.span }}" aria-hidden="true"><span class="bar" data-state="{{ run.state }}" title="{{ state_words[run.state] }} {{ run.start_label }}-{{ run.end_label }}"></span></td>
+        {%- endfor %}
+      </tr>
+      {% endfor %}
+      <tr class="timeline__free">
+        <th scope="row" class="timeline__who">Free</th>
+        {%- for run in day.free %}
+        {% set enough = run.yes >= lineup_size %}
+        <td colspan="{{ run.span }}" class="{% if enough %}is-enough{% endif %}">{% if run.yes %}{{ run.yes }}/{{ lineup_size }}{% if run.maybe %}<span class="muted">+{{ run.maybe }}</span>{% endif %}{% if enough %}<span class="visually-hidden"> enough players</span>{% endif %}{% endif %}</td>
+        {%- endfor %}
+      </tr>
+    </tbody>
+  </table>
+</div>
+{%- endmacro %}

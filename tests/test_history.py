@@ -3,6 +3,7 @@ prediction against what was played, and the habits that feed the simulation."""
 
 import asyncio
 import json
+from datetime import UTC, datetime
 
 import pytest
 
@@ -39,6 +40,7 @@ from tests.matchup_support import (
 from tests.support import ADMIN_ID, add_user
 
 NOW_ISO = "2026-11-14T12:00:00Z"
+NOW = datetime(2026, 11, 14, 12, 0, tzinfo=UTC)
 
 
 def run(coroutine):
@@ -286,7 +288,7 @@ def test_reading_a_lobby_stores_the_games_as_picks(db, cup, match, osu, scan_cli
     lobby(osu, (NM1, 900, 800), (HD1, 700, 800), (TB, 900, 800))
     linked = point_at_lobby(db, match)
 
-    count = run(history.refresh_from_lobby(db, scan_client, linked))
+    count = run(history.refresh_from_lobby(db, scan_client, linked, NOW))
 
     maps = cup["maps"]
     assert count == 3
@@ -302,17 +304,17 @@ def test_reading_again_replaces_the_lobby_events_instead_of_adding_to_them(
 ):
     lobby(osu, (NM1, 900, 800))
     linked = point_at_lobby(db, match)
-    run(history.refresh_from_lobby(db, scan_client, linked))
+    run(history.refresh_from_lobby(db, scan_client, linked, NOW))
 
     osu.add_game(777, NM2, [(CAPTAIN, 1), (RIVAL_A, 2)])
-    run(history.refresh_from_lobby(db, scan_client, linked))
+    run(history.refresh_from_lobby(db, scan_client, linked, NOW))
 
     assert [row[0] for row in stored(db, match.id)] == [100, 101]
 
 
 def test_a_match_without_a_lobby_cannot_be_read(db, match, scan_client):
     with pytest.raises(LookupError):
-        run(history.refresh_from_lobby(db, scan_client, match))
+        run(history.refresh_from_lobby(db, scan_client, match, NOW))
 
 
 def test_a_lobby_osu_does_not_have_changes_nothing(db, cup, match, scan_client):
@@ -320,7 +322,7 @@ def test_a_lobby_osu_does_not_have_changes_nothing(db, cup, match, scan_client):
     linked = point_at_lobby(db, match, 4040)
 
     with pytest.raises(OsuNotFound):
-        run(history.refresh_from_lobby(db, scan_client, linked))
+        run(history.refresh_from_lobby(db, scan_client, linked, NOW))
 
     assert stored(db, match.id) == [(100, "pick", 1, None, None, "manual")]
 
@@ -331,12 +333,12 @@ def test_a_correction_survives_reading_the_lobby_again_and_wins_its_seq(
     maps = cup["maps"]
     lobby(osu, (NM1, 900, 800), (NM2, 900, 800))
     linked = point_at_lobby(db, match)
-    run(history.refresh_from_lobby(db, scan_client, linked))
+    run(history.refresh_from_lobby(db, scan_client, linked, NOW))
     events_repo.save_manual(
         db, match.id, event(100, side=2, map_id=maps["HD1"], winner=2, source="manual")
     )
 
-    run(history.refresh_from_lobby(db, scan_client, linked))
+    run(history.refresh_from_lobby(db, scan_client, linked, NOW))
 
     assert stored(db, match.id) == [
         (100, "pick", 2, maps["HD1"], 2, "manual"),  # the correction, not the lobby's NM1
@@ -517,9 +519,9 @@ def test_the_background_job_reads_each_finished_match_with_a_lobby_once(
     lobby(osu, (NM1, 900, 800))
     point_at_lobby(db, match)
 
-    first = run(history.import_pending(db, scan_client))
+    first = run(history.import_pending(db, scan_client, NOW))
     requests = len(osu.match_requests(777))
-    second = run(history.import_pending(db, scan_client))
+    second = run(history.import_pending(db, scan_client, NOW))
 
     assert (first, second) == (1, 0)
     assert len(osu.match_requests(777)) == requests
@@ -545,8 +547,8 @@ def test_the_background_job_reads_at_capture_priority_and_a_person_at_interactiv
     linked = point_at_lobby(db, match)
     seen = spy_on_priority(monkeypatch)
 
-    run(history.import_pending(db, scan_client))
-    run(history.refresh_from_lobby(db, scan_client, linked))
+    run(history.import_pending(db, scan_client, NOW))
+    run(history.refresh_from_lobby(db, scan_client, linked, NOW))
 
     assert seen == [Priority.CAPTURE, Priority.INTERACTIVE]
 
@@ -560,7 +562,7 @@ def test_the_job_skips_matches_that_are_not_finished_or_already_have_events(
     open_match = add_game(db, cup, when="2026-11-20T18:00:00Z")
     db.execute("UPDATE matches SET mp_match_id = 777 WHERE id = ?", (open_match,))
 
-    assert run(history.import_pending(db, scan_client)) == 0
+    assert run(history.import_pending(db, scan_client, NOW)) == 0
     assert osu.match_requests(777) == []
 
 
@@ -569,8 +571,8 @@ def test_a_lobby_osu_does_not_have_is_marked_so_it_is_not_asked_for_every_run(
 ):
     point_at_lobby(db, match, 4040)
 
-    assert run(history.import_pending(db, scan_client)) == 1
-    assert run(history.import_pending(db, scan_client)) == 0
+    assert run(history.import_pending(db, scan_client, NOW)) == 1
+    assert run(history.import_pending(db, scan_client, NOW)) == 0
     assert app_settings_repo.get(db, f"{history.READ_PREFIX}{match.id}") == "1"
 
 
@@ -580,10 +582,10 @@ def test_osu_being_down_leaves_the_match_for_the_next_run(db, cup, match, osu, s
     osu.unavailable_paths.add("/api/v2/matches/777")
 
     with pytest.raises(OsuUnavailable):
-        run(history.import_pending(db, scan_client))
+        run(history.import_pending(db, scan_client, NOW))
     osu.unavailable_paths.clear()
 
-    assert run(history.import_pending(db, scan_client)) == 1
+    assert run(history.import_pending(db, scan_client, NOW)) == 1
 
 
 def test_a_lobby_osu_keeps_failing_on_is_given_up_after_three_tries_and_logged(
@@ -598,16 +600,16 @@ def test_a_lobby_osu_keeps_failing_on_is_given_up_after_three_tries_and_logged(
 
     for _ in range(2):  # the newest match is tried first and holds the others back
         with pytest.raises(OsuUnavailable):
-            run(history.import_pending(db, scan_client))
+            run(history.import_pending(db, scan_client, NOW))
     assert stored(db, other) == []
     with caplog.at_level("WARNING"):
-        read = run(history.import_pending(db, scan_client))
+        read = run(history.import_pending(db, scan_client, NOW))
 
     assert read == 1  # the stuck match is given up on, the other one is read
     assert app_settings_repo.get(db, f"{history.FAILED_PREFIX}{stuck.id}") == "3"
     assert f"match {stuck.id}" in caplog.text
     assert [row[0] for row in stored(db, other)] == [100]
-    assert run(history.import_pending(db, scan_client)) == 0
+    assert run(history.import_pending(db, scan_client, NOW)) == 0
 
 
 def test_the_job_reads_at_most_its_limit_per_run(db, cup, osu, scan_client):
@@ -617,8 +619,8 @@ def test_the_job_reads_at_most_its_limit_per_run(db, cup, osu, scan_client):
         osu.add_game(800 + index, NM1, [(CAPTAIN, 2), (RIVAL_A, 1)])
         db.execute("UPDATE matches SET mp_match_id = ? WHERE id = ?", (800 + index, match_id))
 
-    assert run(history.import_pending(db, scan_client, limit=2)) == 2
-    assert run(history.import_pending(db, scan_client, limit=2)) == 1
+    assert run(history.import_pending(db, scan_client, NOW, limit=2)) == 2
+    assert run(history.import_pending(db, scan_client, NOW, limit=2)) == 1
 
 
 # --- wybin sync feeds the bans -----------------------------------------------------------------

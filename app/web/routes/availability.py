@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, Response
 
 from app.clock import Clock, to_utc_iso
+from app.config import Settings
 from app.domain.models import Role
 from app.domain.parsing import parse_uint
 from app.domain.slots import MATCH_DURATION
@@ -23,6 +24,7 @@ from app.web.deps import (
     TournamentAccess,
     get_clock,
     get_db,
+    get_settings,
     member_access,
     player_access,
     require_writable,
@@ -62,9 +64,11 @@ async def availability_page(
     zone: str = "",
     week: str = "",
     member: str = "",
+    edit: str = "",
     access: TournamentAccess = Depends(member_access),
     db: sqlite3.Connection = Depends(get_db),
     clock: Clock = Depends(get_clock),
+    settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
     tournament = access.tournament
     shown = availability.view_zone(tz, access.user.timezone, zone)
@@ -77,8 +81,9 @@ async def availability_page(
         db, tournament.id, [column.osu_id for column in columns], to_utc_iso(start), to_utc_iso(end)
     )
     bands = schedule.bands_between(db, tournament, start - MATCH_DURATION, end)
-    grid = availability.build_grid(monday, shown.zone, columns, found, bands)
     editable = _editable_column(access, columns, member)
+    editing = edit == "1"
+    archived = tournament.status == "archived"
 
     def link(week_value: str) -> str:
         """The same view for another week."""
@@ -88,14 +93,24 @@ async def availability_page(
             zone=shown.name if shown.is_local and not shown.needs_detection else "",
             week=week_value,
             member=member,
+            edit="1" if editing else "",
+        )
+
+    def view_link() -> str:
+        """The timeline of this week and zone: where "Done" goes back to."""
+        return _url(
+            tournament.id,
+            tz="local" if shown.is_local else "",
+            zone=shown.name if shown.is_local and not shown.needs_detection else "",
+            week=monday.isoformat(),
         )
 
     context: dict[str, Any] = {
         "access": access,
         "tournament": tournament,
         "nav_current": "availability",
-        "archived": tournament.status == "archived",
-        "grid": grid,
+        "archived": archived,
+        "editing": editing,
         "columns": columns,
         "editable_id": editable,
         "own_id": access.user.osu_id,
@@ -107,24 +122,35 @@ async def availability_page(
         "can_pick_member": access.role >= Role.CAPTAIN,
         "member_options": [(str(column.osu_id), column.name) for column in columns],
         "member_value": str(editable) if editable is not None else "",
-        "tz_tabs": _tz_tabs(tournament.id, shown, monday.isoformat(), access.user.timezone, zone),
         "previous_url": link(availability.previous_week(monday).isoformat()),
         "next_url": link(availability.next_week(monday).isoformat()),
         "today_url": link(""),
         "week_label": _week_label(monday),
+        "view_url": view_link(),
+        "edit_url": _edit_url(view_link()),
+        "share_url": _share_url(settings, request, view_link()),
+        "can_update": editable is not None and not archived,
     }
+    if editing:
+        context["grid"] = availability.build_grid(monday, shown.zone, columns, found, bands)
+    else:
+        filled_ids = {osu_id for osu_id, slots in found.items() if slots}
+        context["days"] = availability.build_timelines(
+            monday, shown.zone, columns, found, bands, filled_ids
+        )
     return render(request, "pages/tournament/availability.html", context)
 
 
-def _tz_tabs(
-    tid: int, shown: availability.ViewZone, week: str, saved: str | None, browser_zone: str
-) -> list[tuple[str, str, bool]]:
-    local_name = shown.name if shown.is_local and not shown.needs_detection else (saved or "")
-    local_label = f"Local ({local_name})" if local_name else "Local"
-    return [
-        ("UTC", _url(tid, week=week), not shown.is_local),
-        (local_label, _url(tid, tz="local", zone=browser_zone, week=week), shown.is_local),
-    ]
+def _edit_url(view_url: str) -> str:
+    return view_url + ("&" if "?" in view_url else "?") + "edit=1"
+
+
+def _share_url(settings: Settings, request: Request, view_path: str) -> str:
+    """The current view (week and time zone, but not whose column is chosen or the edit mode) as an
+    absolute link: a team member who opens it sees the same week and has no access they did not
+    have before."""
+    base = settings.public_url.rstrip("/") or str(request.base_url).rstrip("/")
+    return base + view_path
 
 
 def _week_label(monday) -> str:

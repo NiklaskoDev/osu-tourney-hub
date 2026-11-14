@@ -1,5 +1,7 @@
 """The Lobbies page: who sees what, the filters, and adding a lobby by link."""
 
+import re
+
 import pytest
 
 from app.repos import lobbies as lobbies_repo
@@ -57,7 +59,7 @@ def stored(db, cup):
     )
 
 
-def page(client, cup, query=""):
+def page(client, cup, query="?stage="):
     return client.get(f"/t/{cup['id']}/lobbies{query}")
 
 
@@ -181,7 +183,7 @@ def test_the_stage_filter_keeps_lobbies_with_a_hit_in_that_stage(client, login, 
 def test_the_player_filter_keeps_lobbies_that_player_was_found_in(client, login, cup, stored):
     login(PLAYER)
 
-    text = page(client, cup, f"?player={RIVAL}").text
+    text = page(client, cup, f"?stage=&player={RIVAL}").text
 
     assert "just practice" in text and "finals warmup" not in text
 
@@ -197,7 +199,7 @@ def test_the_filters_combine_and_an_empty_result_says_so(client, login, cup, sto
 def test_the_player_filter_offers_everyone_found_with_their_names(client, login, cup, stored):
     login(PLAYER)
 
-    text = page(client, cup, f"?player={RIVAL}").text
+    text = page(client, cup, f"?stage=&player={RIVAL}").text
 
     assert f'<option value="{RIVAL}" selected>RivalRon</option>' in text
     assert f'<option value="{CAPTAIN}">CaptainCarl</option>' in text
@@ -359,3 +361,21 @@ def test_a_person_may_add_twenty_lobbies_an_hour(client, login, csrf, osu, cup):
     statuses = [link(client, cup, csrf, str(7200 + n)).status_code for n in range(21)]
 
     assert statuses == [303] * 20 + [429]
+
+
+def test_the_filter_selects_have_an_empty_choice_so_they_are_not_required(
+    client, login, cup, stored
+):
+    """requestSubmit() fails browser validation on a required select left on its empty option,
+    so choosing "All stages" or "Everyone" would send nothing."""
+    login(PLAYER)
+
+    html = page(client, cup).text
+
+    form = html.split("data-autosubmit novalidate>")[1].split("</form>")[0]
+    assert re.search(r'<option value=""[^>]*>All stages</option>', form)
+    assert re.search(r'<option value=""[^>]*>Everyone</option>', form)
+    for name in ("stage", "player"):
+        select = re.search(rf'<select[^>]*name="{name}"[^>]*>', form).group(0)
+        assert " required" not in select, name
+    assert "(optional)" not in form

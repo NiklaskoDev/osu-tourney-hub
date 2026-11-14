@@ -24,11 +24,18 @@
 {%- if pool_map.is_freemod or pool_map.is_tiebreaker %} <span class="muted">({{ mods|mods }})</span>{% endif -%}
 {%- endmacro %}
 
+{% macro lineup_cols(with_notes) -%}
+<colgroup>
+  <col class="col-map">
+  <col>
+  {%- if with_notes %}<col class="col-notes">{% endif %}
+</colgroup>
+{%- endmacro %}
+
 {% block tournament_content %}
 {% set ff = form_error_field|default(none) %}
 <div class="page__header">
   <h1>Lineup</h1>
-  <p class="muted">{{ tournament.name }}</p>
 </div>
 
 {% if stage_tabs %}{{ tabs("Stages", stage_tabs) }}{% endif %}
@@ -53,20 +60,21 @@
 <section class="stack" aria-labelledby="suggestion-heading">
   <h2 id="suggestion-heading">Suggested lineup</h2>
   <p class="muted">The {{ lineup_size }} {{ "player" if lineup_size == 1 else "players" }} with the best {{ "score" if lineup_size == 1 else "scores" }} on each map, using {{ scoring_label }} scores. Ties go to the higher accuracy, then the more recent score.</p>
-  <form class="row" method="get" action="/t/{{ tournament.id }}/lineup">
+  <form class="toolbar" method="get" action="/t/{{ tournament.id }}/lineup" data-autosubmit novalidate>
     <input type="hidden" name="stage" value="{{ stage.id }}">
     {{ checkbox("subs", "Include substitutes", checked=include_substitutes) }}
     {% if availability_filter.matches %}
     {{ checkbox("avail", "Only players available at match time", checked=only_available) }}
-    {{ field("match", "Match", options=match_options, value=match_value, id="lineup-match", required=true) }}
+    {{ field("match", "Match", options=match_options, value=match_value, id="lineup-match", hide_optional=true, inline=true) }}
     {% endif %}
-    {{ button("Update suggestion", variant="secondary", type="submit") }}
+    <noscript>{{ button("Update suggestion", variant="secondary", type="submit") }}</noscript>
   </form>
   {% if only_available %}
   <p class="muted">Showing only players who answered Yes for the whole match ({{ availability_filter.selected.opponent_name }}, {{ local_time(availability_filter.selected.match.scheduled_at) }}).{% if availability_filter.maybe_count %} {{ availability_filter.maybe_count }} {{ "player" if availability_filter.maybe_count == 1 else "players" }} answered Maybe and {{ "is" if availability_filter.maybe_count == 1 else "are" }} left out.{% endif %}</p>
   {% endif %}
 
   {% call table("Suggested lineup for " ~ stage.name) %}
+  {{ lineup_cols(true) }}
   <thead>
     <tr>
       <th scope="col">Map</th>
@@ -137,6 +145,7 @@
     {% if only_available %}<input type="hidden" name="avail" value="1"><input type="hidden" name="match" value="{{ match_value }}">{% endif %}
     <div class="sheet">
     {% call table("Edit the saved lineup for " ~ stage.name) %}
+    {{ lineup_cols(false) }}
     <thead>
       <tr>
         <th scope="col">Map</th>
@@ -152,10 +161,12 @@
             {% for slot in range(lineup_size) %}
             {% set pkey = pick_field(pool_map.id, slot) %}
             {% set mkey = mods_field(pool_map.id, slot) %}
-            {{ field(pkey, "Player " ~ (slot + 1) ~ " on " ~ pool_map.slot, options=player_options, value=form_values[pkey]|default(""), label_hidden=true, disabled=archived, error=form_error if ff == pkey else none) }}
-            {% if pool_map.is_freemod or pool_map.is_tiebreaker %}
-            <div class="picks__mods">{{ field(mkey, "Mods of player " ~ (slot + 1) ~ " on " ~ pool_map.slot, value=form_values[mkey]|default(""), placeholder="Mods, e.g. HD", label_hidden=true, disabled=archived, autocomplete="off", error=form_error if ff == mkey else none) }}</div>
-            {% endif %}
+            <div class="slot-edit__pick">
+              {{ field(pkey, "Player " ~ (slot + 1) ~ " on " ~ pool_map.slot, options=player_options, value=form_values[pkey]|default(""), label_hidden=true, disabled=archived, error=form_error if ff == pkey else none) }}
+              {% if pool_map.is_freemod or pool_map.is_tiebreaker %}
+              {{ field(mkey, "Mods of player " ~ (slot + 1) ~ " on " ~ pool_map.slot, value=form_values[mkey]|default(""), placeholder="Mods, e.g. HD", label_hidden=true, disabled=archived, autocomplete="off", error=form_error if ff == mkey else none) }}
+              {% endif %}
+            </div>
             {% endfor %}
           </div>
         </td>
@@ -169,6 +180,7 @@
   </form>
   {% elif saved %}
   {% call table("Saved lineup for " ~ stage.name) %}
+  {{ lineup_cols(false) }}
   <thead>
     <tr>
       <th scope="col">Map</th>

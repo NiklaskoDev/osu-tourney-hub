@@ -1,5 +1,7 @@
 """The pool sheet page: what it shows, and adding, removing and annotating scores."""
 
+import re
+
 import pytest
 
 from tests.support import (
@@ -335,7 +337,7 @@ def test_a_player_adds_their_own_score(client, login, csrf, db, cup, clock):
         (1001, PLAYER, "", 812_345, "v2", 97.85, 1200, 3, "manual", None, PLAYER, cup["id"])
     ]
     page = client.get(response.headers["location"]).text
-    assert "Score saved." in page and "812,345" in page
+    assert "Score saved on NM1." in page and "812,345" in page
 
 
 def test_the_score_is_saved_in_the_tournaments_scoring_type(client, login, csrf, db, cup):
@@ -476,7 +478,6 @@ def test_a_placeholder_map_cannot_get_scores(client, login, csrf, db, cup):
         ({"accuracy": "-1"}, "Enter the accuracy as a number from 0 to 100"),
         ({"accuracy": "abc"}, "Enter the accuracy as a number from 0 to 100"),
         ({"accuracy": "nan"}, "Enter the accuracy as a number from 0 to 100"),
-        ({"accuracy": ""}, "Enter the accuracy as a number from 0 to 100"),
         ({"misses": "-1"}, "Misses must be a whole number"),
         ({"misses": "two"}, "Misses must be a whole number"),
         ({"max_combo": "99999999"}, "Combo must be a whole number"),
@@ -792,3 +793,171 @@ def test_a_guest_reads_team_notes_but_not_private_ones_and_cannot_write(
     assert "Private thought" not in page
     assert refused.status_code == 403
     assert db.execute("SELECT COUNT(*) FROM notes").fetchone()[0] == 2
+
+
+# --- the quick score bar and a score without accuracy ---
+
+
+def quick_score(client, token, cup, slot="NM1", **fields):
+    return post_score(client, token, cup, slot, entry_origin="quick", **fields)
+
+
+def test_the_page_has_a_quick_bar_listing_maps_by_slot_label(client, login, cup):
+    login(PLAYER)
+
+    html = client.get(f"/t/{cup['id']}/pool").text
+
+    assert 'id="quick-score"' in html and 'name="entry_origin" value="quick"' in html
+    assert ">NM1 · Synth Artist - Song NM1<" in html
+    assert html.index(">Choose map<") < html.index(">NM1 · ") < html.index(">TB · ")
+    assert 'name="osu_id"' not in html.split('id="quick-score"')[1].split("</form>")[0]  # a player
+    assert html.count('type="submit"') >= 1
+
+
+def test_a_captain_can_choose_the_player_on_the_quick_bar(client, login, cup):
+    login(CAPTAIN)
+
+    html = client.get(f"/t/{cup['id']}/pool").text
+
+    assert 'name="osu_id"' in html.split('id="quick-score"')[1].split("</form>")[0]
+
+
+def test_the_quick_bar_is_not_shown_to_a_guest(client, login, cup):
+    login(GUEST)
+
+    assert 'id="quick-score"' not in client.get(f"/t/{cup['id']}/pool").text
+
+
+def test_an_archived_tournament_shows_the_quick_bar_disabled(client, login, db, cup):
+    db.execute("UPDATE tournaments SET status = 'archived' WHERE id = ?", (cup["id"],))
+    login(PLAYER)
+
+    bar = client.get(f"/t/{cup['id']}/pool").text.split('id="quick-score"')[1].split("</form>")[0]
+
+    assert bar.count(" disabled") >= 5
+
+
+def test_a_stage_whose_maps_have_no_beatmap_says_scores_come_later(client, login, db, cup):
+    db.execute("UPDATE pool_maps SET beatmap_id = NULL WHERE stage_id = ?", (cup["stage"],))
+    login(PLAYER)
+
+    html = client.get(f"/t/{cup['id']}/pool").text
+
+    assert 'id="quick-score"' not in html
+    assert "Scores can be added once maps have an osu! beatmap." in html
+
+
+def test_a_quick_score_without_accuracy_is_saved_with_an_empty_accuracy(
+    client, login, csrf, db, cup
+):
+    login(PLAYER)
+
+    response = quick_score(client, csrf(), cup, score="845 120", accuracy="")
+
+    assert response.status_code == 303
+    assert response.headers["location"].endswith(f"/pool?stage={cup['stage']}#quick-score")
+    assert [(row["score"], row["accuracy"]) for row in scores(db)] == [(845_120, None)]
+    page = client.get(f"/t/{cup['id']}/pool?stage={cup['stage']}").text
+    assert "Score saved on NM1." in page
+
+
+def test_a_score_without_accuracy_shows_a_dash_and_is_left_out_of_the_average(
+    client, login, csrf, db, cup
+):
+    add_score(db, 1001, OTHER_PLAYER, 700_000, accuracy=94.0)
+    login(PLAYER)
+    quick_score(client, csrf(), cup, score="900000", accuracy="")
+
+    html = client.get(f"/t/{cup['id']}/pool").text
+
+    assert "900,000" in html and "-</span>" in html
+    assert "94.00% &middot; 2 players" in html  # the mean accuracy skips the empty one
+
+
+def test_the_typed_mods_of_the_quick_bar_are_saved_in_canonical_form_on_a_freemod_map(
+    client, login, csrf, db, cup
+):
+    login(PLAYER)
+
+    quick_score(client, csrf(), cup, "FM1", mods_text="hdhr")
+
+    assert [row["mods"] for row in scores(db)] == ["HDHR"]
+
+
+def test_ticked_mods_win_over_typed_ones(client, login, csrf, db, cup):
+    login(PLAYER)
+    data = {
+        **csrf(),
+        "pool_map_id": str(cup["maps"]["FM1"]),
+        "score": "1",
+        "mods": "HD",
+        "mods_text": "HR",
+    }
+
+    client.post(f"/t/{cup['id']}/scores", data=data, follow_redirects=False)
+
+    assert [row["mods"] for row in scores(db)] == ["HD"]
+
+
+def test_bad_typed_mods_are_explained_on_the_mods_field_and_the_values_are_kept(
+    client, login, csrf, db, cup
+):
+    login(PLAYER)
+
+    response = quick_score(client, csrf(), cup, "FM1", mods_text="XYZ", score="123456")
+
+    assert response.status_code == 422
+    bar = response.text.split('id="quick-score"')[1].split("</form>")[0]
+    assert "field__error" in bar and 'value="XYZ"' in bar and 'value="123456"' in bar
+    assert 'class="field__control" id="quick-mods"' in bar
+    assert scores(db) == []
+
+
+def test_typed_mods_are_ignored_on_a_map_with_fixed_mods(client, login, csrf, db, cup):
+    login(PLAYER)
+
+    response = quick_score(client, csrf(), cup, "HD1", mods_text="XYZ")
+
+    assert response.status_code == 303
+    assert [row["mods"] for row in scores(db)] == ["HD"]
+
+
+def test_a_bad_score_on_the_quick_bar_is_shown_on_the_bar_not_in_a_map_dialog(
+    client, login, csrf, cup
+):
+    login(PLAYER)
+
+    response = quick_score(client, csrf(), cup, score="abc")
+
+    assert response.status_code == 422
+    bar = response.text.split('id="quick-score"')[1].split("</form>")[0]
+    assert "Enter the score as a whole number" in bar
+    assert "open" not in response.text.split("map-detail")[1].split(">")[0]  # no dialog opened
+    assert "data-autoopen" not in response.text
+
+
+def test_a_bad_accuracy_on_the_quick_bar_is_still_refused(client, login, csrf, cup):
+    login(PLAYER)
+
+    response = quick_score(client, csrf(), cup, accuracy="101")
+
+    assert response.status_code == 422
+    assert "Enter the accuracy as a number from 0 to 100" in response.text
+
+
+def test_a_player_cannot_add_a_score_for_someone_else_on_the_quick_bar(client, login, csrf, cup):
+    login(PLAYER)
+
+    response = quick_score(client, csrf(), cup, osu_id=str(OTHER_PLAYER))
+
+    assert response.status_code == 403
+
+
+def test_the_map_dialog_accuracy_is_optional(client, login, cup):
+    login(PLAYER)
+
+    html = client.get(f"/t/{cup['id']}/pool").text
+
+    accuracy_input = re.search(r'<input[^>]*id="score-acc-1"[^>]*>', html).group(0)
+    assert " required" not in accuracy_input
+    assert "Optional. From 0 to 100" in html

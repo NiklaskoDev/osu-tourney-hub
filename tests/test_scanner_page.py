@@ -191,6 +191,8 @@ def as_admin(client, login, csrf, db):
         ("post", "/admin/scanner/pause"),
         ("post", "/admin/scanner/resume"),
         ("post", "/admin/scanner/gaps/1/backfill"),
+        ("post", "/admin/scanner/gaps/1/stop"),
+        ("post", "/admin/scanner/start"),
     ],
 )
 def test_the_scanner_pages_are_for_admins_only(client, login, csrf, db, method, path):
@@ -216,6 +218,14 @@ def test_scanner_posts_need_the_csrf_token(client, as_admin, db):
 
     assert response.status_code == 403
     assert Skimmer.is_paused(db) is False
+
+
+def test_starting_from_an_id_needs_the_csrf_token(client, as_admin, db):
+    cursors(db, 1000, 1200)
+
+    response = client.post("/admin/scanner/start", data={"start": "900"})
+
+    assert response.status_code == 403 and scan_repo.list_gaps(db) == []
 
 
 def test_the_page_shows_the_status_as_a_table(client, as_admin, db, clock):
@@ -308,7 +318,8 @@ def test_gaps_are_listed_with_a_backfill_button_that_starts_the_backfill(client,
     assert scan_repo.get_gap(db, gap).backfilled_until == 999
     page = client.get("/admin/scanner").text
     assert "0 of 1,000 ids read" in page
-    assert 'action="/admin/scanner/gaps/' not in page  # nothing left to start
+    assert f'action="/admin/scanner/gaps/{gap}/backfill"' not in page  # nothing left to start
+    assert f'action="/admin/scanner/gaps/{gap}/stop"' in page
 
 
 def test_a_finished_backfill_is_marked_done(client, as_admin, db):
@@ -354,3 +365,290 @@ def test_the_page_shows_the_errors_and_the_error_ranges_with_a_backfill_button(
     assert "Ids given up on after errors, last hour" in page
     assert re.search(r"Ids given up on after errors, last hour</th>\s*<td>2</td>", page)
     assert "70 to 71" in page and f"/admin/scanner/gaps/{gap}/backfill" in page
+
+
+# --- starting from a lobby id ---
+
+from app.services.skimmer import IdDispenser  # noqa: E402
+from app.web.routes.scanner import _eta_text  # noqa: E402
+
+
+def start(client, as_admin, value, **extra):
+    return client.post(
+        "/admin/scanner/start", data={**as_admin, "start": value, **extra}, follow_redirects=False
+    )
+
+
+def flashed(client):
+    return client.get("/admin/scanner").text
+
+
+def test_a_link_and_a_bare_id_give_the_same_range(client, as_admin, db):
+    cursors(db, 1000, 1200)
+
+    start(client, as_admin, "https://osu.ppy.sh/community/matches/900")
+    first = [(g.start_id, g.end_id, g.reason) for g in scan_repo.list_gaps(db)]
+    for gap in scan_repo.list_gaps(db):
+        scan_repo.delete_gaps(db, [gap.id])
+    start(client, as_admin, "900")
+
+    assert first == [(900, 1000, "admin_skip")]
+    assert [(g.start_id, g.end_id, g.reason) for g in scan_repo.list_gaps(db)] == first
+
+
+def test_an_older_id_is_stored_as_a_backfill_and_the_page_says_so(client, as_admin, db):
+    cursors(db, 1000, 1200)
+
+    response = start(client, as_admin, "900")
+
+    assert response.status_code == 303 and response.headers["location"] == "/admin/scanner"
+    (gap,) = scan_repo.list_gaps(db)
+    assert gap.backfilled_until == 899
+    page = flashed(client)
+    assert "Lobby ids 900 to 1,000 will be read in the background with spare budget" in page
+    assert "Chosen by an admin" in page and "0 of 101 ids read" in page
+
+
+def test_a_newer_id_makes_the_scanner_skip_ahead_and_lists_what_it_skipped(
+    client, app, as_admin, db
+):
+    cursors(db, 1000, 1200)
+    app.state.skimmer._dispenser = IdDispenser(1000, 1200)
+
+    response = start(client, as_admin, "1100")
+
+    assert response.status_code == 303
+    (gap,) = scan_repo.list_gaps(db)
+    assert (gap.start_id, gap.end_id, gap.backfilled_until) == (1001, 1099, None)
+    assert jobs_repo.get(db, "skimmer").cursor == "1099"
+    page = flashed(client)
+    assert "The scanner now continues from lobby id 1,100." in page
+    assert "Ids 1,001 to 1,099 are listed under Skipped ranges" in page
+
+
+def test_the_id_the_scanner_already_continues_from_changes_nothing(client, as_admin, db):
+    cursors(db, 1000, 1200)
+
+    response = start(client, as_admin, "1001")
+
+    assert response.status_code == 303 and scan_repo.list_gaps(db) == []
+    assert "The scanner already continues from this lobby id." in flashed(client)
+
+
+@pytest.mark.parametrize("value", ["abc", "", "https://example.com/matches/x", "-5", "12.5"])
+def test_something_that_is_not_an_id_is_explained_next_to_the_field_and_kept(
+    client, as_admin, db, value
+):
+    cursors(db, 1000, 1200)
+
+    response = start(client, as_admin, value)
+
+    assert response.status_code == 422
+    assert "Enter a lobby id or an osu! match link." in response.text
+    assert f'value="{value}"' in response.text
+    assert scan_repo.list_gaps(db) == []
+
+
+def test_an_id_above_the_head_is_refused_naming_the_head(client, as_admin, db):
+    cursors(db, 1000, 1200)
+
+    response = start(client, as_admin, "5000")
+
+    assert response.status_code == 422
+    assert "newer than the newest one osu! has listed (1,200)" in response.text
+    assert 'value="5000"' in response.text
+
+
+def test_before_the_scanner_has_read_the_head_the_admin_is_told_to_wait(client, as_admin, db):
+    response = start(client, as_admin, "900")
+
+    assert response.status_code == 422 and "has not started yet" in response.text
+
+
+def test_a_skip_before_the_dispenser_exists_is_refused_and_stores_nothing(client, as_admin, db):
+    cursors(db, 1000, 1200)  # the numbers are saved, but this process has not read the head yet
+
+    response = start(client, as_admin, "1100")
+
+    assert response.status_code == 422 and "has not started yet" in response.text
+    assert scan_repo.list_gaps(db) == []
+
+
+def test_a_switched_off_scanner_refuses_with_409(client, app, as_admin, db):
+    cursors(db, 1000, 1200)
+    app.state.settings = dataclasses.replace(app.state.settings, scanner_enabled=False)
+
+    response = start(client, as_admin, "900")
+
+    assert response.status_code == 409
+    assert "The scanner is switched off (SCANNER_ENABLED is false)." in response.text
+    assert scan_repo.list_gaps(db) == []
+
+
+def test_the_start_form_is_not_offered_while_the_scanner_is_switched_off(client, app, as_admin):
+    app.state.settings = dataclasses.replace(app.state.settings, scanner_enabled=False)
+
+    assert "Start from a lobby id" not in client.get("/admin/scanner").text
+
+
+def test_the_page_offers_the_start_form_with_the_scanners_position(client, as_admin, db):
+    cursors(db, 1000, 1200)
+
+    page = client.get("/admin/scanner").text
+
+    assert "Start from a lobby id" in page and 'action="/admin/scanner/start"' in page
+    assert "the scanner's position (1000)" in page and "newest id osu! has listed is 1200" in page
+
+
+def test_a_large_backfill_asks_for_confirmation_before_anything_is_stored(
+    client, app, as_admin, db
+):
+    cursors(db, 20_000, 20_100)
+    limit = app.state.settings.scanner_max_backlog
+
+    response = start(client, as_admin, "100")
+
+    assert response.status_code == 200
+    assert scan_repo.list_gaps(db) == []
+    assert f"Read {20_000 - 100 + 1:,} lobby ids?" in response.text
+    assert 'name="confirmed" value="1"' in response.text and 'value="100"' in response.text
+    assert "Start backfill" in response.text and "(rough estimate)" in response.text
+    assert 20_000 - 100 + 1 > limit
+
+
+def test_confirming_stores_the_large_backfill_and_redirects(client, as_admin, db):
+    cursors(db, 20_000, 20_100)
+
+    response = start(client, as_admin, "100", confirmed="1")
+
+    assert response.status_code == 303
+    (gap,) = scan_repo.list_gaps(db)
+    assert (gap.start_id, gap.end_id, gap.backfilled_until) == (100, 20_000, 99)
+
+
+def test_a_backfill_of_exactly_the_limit_needs_no_confirmation(client, app, as_admin, db):
+    limit = app.state.settings.scanner_max_backlog
+    cursors(db, 10_000, 10_100)
+
+    assert start(client, as_admin, str(10_000 - limit + 1)).status_code == 303
+    assert start(client, as_admin, str(1)).status_code == 200  # and one bigger does
+
+
+def test_the_confirmation_names_the_ranges_it_replaces_and_the_wait(client, as_admin, db, clock):
+    cursors(db, 20_000, 20_100)
+    scan_repo.insert_gap(db, 5000, 6000, "skipped_backlog", "2026-11-12T00:00:00Z")
+    seed(db, clock, range(0, 60), scanned=1, requests=10)
+
+    page = start(client, as_admin, "100").text
+
+    assert "It replaces 1 skipped range it covers." in page
+    assert "this takes about" in page
+
+
+def test_with_no_spare_budget_the_confirmation_says_it_waits_for_the_live_scan(
+    client, as_admin, db, clock
+):
+    cursors(db, 20_000, 20_100)
+    seed(db, clock, range(0, 60), scanned=1, requests=30)
+
+    page = start(client, as_admin, "100").text
+
+    assert "There is no spare budget right now" in page
+
+
+def test_the_ranges_table_says_why_and_offers_stop_for_a_running_backfill(client, as_admin, db):
+    scan_repo.insert_gap(db, 1, 10, "skipped_backlog", "2026-11-12T00:00:00Z")
+    scan_repo.insert_gap(db, 11, 20, "fetch_error", "2026-11-12T00:00:00Z")
+    running = scan_repo.insert_gap(db, 21, 30, "admin_skip", "2026-11-12T00:00:00Z")
+    scan_repo.request_backfill(db, running)
+
+    page = client.get("/admin/scanner").text
+
+    for text in ("Scanner fell behind", "osu! kept failing", "Chosen by an admin", "Why"):
+        assert text in page
+    assert page.count('action="/admin/scanner/gaps/') == 3
+    assert f'action="/admin/scanner/gaps/{running}/stop"' in page
+
+
+def test_stopping_a_backfill_keeps_what_was_read(client, as_admin, db):
+    gap = scan_repo.insert_gap(db, 100, 199, "admin_skip", "2026-11-12T00:00:00Z")
+    scan_repo.request_backfill(db, gap)
+    scan_repo.set_backfilled_until(db, gap, 149)
+
+    response = client.post(f"/admin/scanner/gaps/{gap}/stop", data=as_admin, follow_redirects=False)
+
+    assert response.status_code == 303
+    stopped = scan_repo.get_gap(db, gap)
+    assert (stopped.start_id, stopped.backfilled_until) == (150, None)
+    page = flashed(client)
+    assert "Backfill stopped. What was read stays; the rest can be backfilled again." in page
+    assert f'action="/admin/scanner/gaps/{gap}/backfill"' in page
+
+
+def test_stopping_something_that_is_not_running_says_so(client, as_admin, db):
+    gap = scan_repo.insert_gap(db, 100, 199, "skipped_backlog", "2026-11-12T00:00:00Z")
+
+    response = client.post(f"/admin/scanner/gaps/{gap}/stop", data=as_admin, follow_redirects=False)
+
+    assert response.status_code == 303
+    assert "This range is not being backfilled." in flashed(client)
+
+
+def test_stopping_an_unknown_range_is_a_404(client, as_admin):
+    response = client.post("/admin/scanner/gaps/99/stop", data=as_admin)
+
+    assert response.status_code == 404 and "This skipped range does not exist." in response.text
+
+
+@pytest.mark.parametrize(
+    ("minutes", "text"),
+    [
+        (None, "-"),
+        (0.4, "less than a minute"),
+        (30, "about 30 minutes"),
+        (59.4, "about 59 minutes"),
+        (180, "about 3 hours"),
+        (60 * 24, "about 1 days"),
+        (60 * 24 * 2.4, "about 2 days"),
+    ],
+)
+def test_the_wait_is_said_in_minutes_hours_or_days(minutes, text):
+    assert _eta_text(minutes) == text
+
+
+def live_ahead(app, db):
+    """The saved cursor lags: 1000 on disk, 1100 in the running scanner."""
+    cursors(db, 1000, 1200)
+    app.state.skimmer._dispenser = IdDispenser(1100, 1200)
+
+
+def test_the_start_id_the_live_scanner_already_continues_from_changes_nothing(
+    client, app, as_admin, db
+):
+    live_ahead(app, db)
+
+    response = start(client, as_admin, "1101")
+
+    assert response.status_code == 303 and scan_repo.list_gaps(db) == []
+    assert "The scanner already continues from this lobby id." in flashed(client)
+    assert jobs_repo.get(db, "skimmer").cursor == "1000"
+
+
+def test_a_backfill_is_planned_from_the_live_cursor_not_the_saved_one(client, app, as_admin, db):
+    live_ahead(app, db)
+
+    start(client, as_admin, "1050")
+
+    (gap,) = scan_repo.list_gaps(db)
+    assert (gap.start_id, gap.end_id) == (1050, 1100)  # not 1050 to 1000, nor a refusal
+
+
+def test_a_skip_is_planned_from_the_live_cursor(client, app, as_admin, db):
+    live_ahead(app, db)
+
+    response = start(client, as_admin, "1150")
+
+    assert response.status_code == 303
+    (gap,) = scan_repo.list_gaps(db)
+    assert (gap.start_id, gap.end_id) == (1101, 1149)  # the ids up to 1100 were already read
+    assert app.state.skimmer.live_cursor == 1149
