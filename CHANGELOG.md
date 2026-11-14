@@ -4,6 +4,8 @@ Versions follow `{major}.{minor}.{hotfix}[-prN]` — see `docs/ai/versioning.md`
 Sections per version: Added, Changed, Fixed, Removed, Security.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-11-14
 ### Added
 - The home page lists your next matches across all your active tournaments, with a countdown, the stage, the tournament and a link to the match.
 - Availability shows one timeline per day with a green, amber or red bar row per player, a check for players who filled in the week, the matches and how many players are free. A switch changes between UTC and your local time, "Share team availability" copies a link to the current week, and "Update my availability" opens the 30-minute grid for editing.

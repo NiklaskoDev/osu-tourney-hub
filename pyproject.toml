@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "osu-tourney-hub"
-version = "0.1.0"
+version = "0.2.0"
 description = "Self-hosted osu! tournament team hub"
 requires-python = ">=3.13"
 # Runtime pins live in requirements.txt so CI and the Docker image install the same set.
