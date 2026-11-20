@@ -47,7 +47,7 @@ jobs:
       # ---------- Python (pytest fails when no tests exist - intended) ----------
       - name: Set up Python
         if: hashFiles('pyproject.toml', 'requirements.txt') != ''
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.13'
       - name: Python - install, lint, test
