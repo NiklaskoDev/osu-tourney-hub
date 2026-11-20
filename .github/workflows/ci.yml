@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Fail if no known stack is present
         if: hashFiles('package.json', 'pyproject.toml', 'requirements.txt', 'go.mod', 'Cargo.toml', '*.sln', '*.slnx', '*.csproj', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'Dockerfile', 'scripts/ci.sh') == ''
